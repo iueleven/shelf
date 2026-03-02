@@ -14,6 +14,8 @@
             --accent: #0d5ea6;
             --accent-2: #1f7b45;
             --warn: #c44536;
+            --link: #1e6db5;
+            --conn: #e67e22;
         }
 
         * {
@@ -196,6 +198,23 @@
             font-size: 13px;
         }
 
+        .legend {
+            display: flex;
+            gap: 14px;
+            align-items: center;
+            margin-top: 10px;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+
         @media (max-width: 980px) {
             .layout {
                 grid-template-columns: 1fr;
@@ -212,8 +231,8 @@
     <section class="card">
         <h1>置物架约束下的组合全集（M1=8，M2=2）</h1>
         <p class="muted">3D 交互说明：左键拖拽旋转，<span class="mono">Shift + 左键</span> 或右键拖拽平移，滚轮缩放。</p>
-        <span class="pill">仅绘制 M1(杆) + M3(面)</span>
-        <span class="pill">M2=2 作为接口语义参与约束，不单独绘制</span>
+        <span class="pill">仅绘制 M1(杆线段) + M3(矩形面)</span>
+        <span class="pill">M2=2 作为连接语义参与约束，不单独绘制</span>
         <span class="pill">先枚举再可视化</span>
     </section>
 
@@ -222,6 +241,11 @@
             <h2>3D 视图</h2>
             <div class="viewer-wrap">
                 <canvas id="viewer"></canvas>
+            </div>
+            <div class="legend">
+                <span><i class="dot" style="background:#123e66"></i>杆线段 M1</span>
+                <span><i class="dot" style="background:rgba(13,94,166,0.65)"></i>矩形面 M3</span>
+                <span><i class="dot" style="background:#e67e22"></i>端点/顶点连接点</span>
             </div>
             <div class="toolbar">
                 <button id="prev-btn">上一种</button>
@@ -251,186 +275,321 @@
     <section class="card">
         <h2>建模口径（用于把组合原则映射为可计算的 3D 场景）</h2>
         <ul>
-            <li><span class="mono">A1</span>：固定 <span class="mono">M1=8</span>，8 根杆布置在长方体底面外轮廓的 8 个离散支撑位上，且全部平行。</li>
-            <li><span class="mono">A2</span>：每块 <span class="mono">M3</span> 表示一块完整矩形层板（同一外轮廓），所有层板相互平行并与杆垂直。</li>
-            <li><span class="mono">A3</span>：连接接口 <span class="mono">M2=2</span> 作为装配语义参与约束，不作为可视几何体绘制。</li>
-            <li><span class="mono">A4</span>：每块层板连接全部 8 根杆；因此每根杆连接的层板数等于层板总数，且需满足 <span class="mono">1 ≤ 度 ≤ 2</span>。</li>
+            <li><span class="mono">A1</span>：固定 <span class="mono">M1=8</span>。4 个矩形顶点位置，每个顶点放置 2 段共线杆（下段/上段），共 8 段线段。</li>
+            <li><span class="mono">A2</span>：候选层板高度仅取 <span class="mono">底/中/顶</span> 三个离散层位；每块 <span class="mono">M3</span> 都是同外轮廓矩形。</li>
+            <li><span class="mono">A3</span>：连接判定只允许端点/顶点匹配；即 <span class="mono">R13-R15</span> 直接作为几何过滤条件。</li>
+            <li><span class="mono">A4</span>：枚举变量是三层位的启用子集，逐一计算并过滤不满足规则的情况。</li>
         </ul>
     </section>
 
     <section class="card">
         <h2>所有可能情况（满足全部约束）</h2>
         <p id="all-cases-text" class="ok"></p>
-        <p class="muted">说明：在上述口径下，枚举变量只有层板数量。由 <span class="mono">R9</span>/<span class="mono">R10</span> 可推出有效层板数只能是 1 或 2。</p>
+        <p class="muted">说明：新增约束后，算法会检查 <span class="mono">R13/R14/R15</span>，仅保留“杆-杆端点连接、杆-面端点与矩形顶点重合”的 case。</p>
     </section>
 </main>
 
 <script>
     "use strict";
 
+    const EPS = 1e-6;
+
     const MODEL = Object.freeze({
         m1: 8,
         m2: 2,
-        rodHeight: 2.6,
-        footprintWidth: 2.6,
-        footprintDepth: 1.5,
-        panelInset: 0.06,
-        minPanelPerRod: 1,
-        maxPanelPerRod: 2,
+        rodHeight: 2.8,
+        footprintWidth: 2.8,
+        footprintDepth: 1.8,
     });
 
     const COLORS = Object.freeze({
         rod: "#123e66",
         rodGlow: "rgba(18, 62, 102, 0.24)",
-        panelFillA: "rgba(13, 94, 166, 0.20)",
-        panelFillB: "rgba(31, 123, 69, 0.20)",
-        panelEdge: "rgba(25, 62, 92, 0.80)",
+        panelFillA: "rgba(13, 94, 166, 0.22)",
+        panelFillB: "rgba(31, 123, 69, 0.22)",
+        panelFillC: "rgba(94, 68, 143, 0.22)",
+        panelEdge: "rgba(25, 62, 92, 0.82)",
         grid: "rgba(80, 110, 140, 0.18)",
+        conn: "#e67e22",
     });
 
+    const LEVELS = Object.freeze([
+        { key: "B", label: "底层", zRatio: -0.5 },
+        { key: "M", label: "中层", zRatio: 0 },
+        { key: "T", label: "顶层", zRatio: 0.5 },
+    ]);
+
     /**
-     * 生成 8 个杆的底面锚点。
-     * 锚点沿长方体外轮廓离散布置，满足“长方体型 + 杆平行”的可视化口径。
+     * 生成矩形四个顶点锚点。
      * @returns {Array<{x:number,y:number}>}
      */
-    function buildRodAnchors() {
+    function buildCornerAnchors() {
         const halfW = MODEL.footprintWidth / 2;
         const halfD = MODEL.footprintDepth / 2;
         return [
             { x: -halfW, y: -halfD },
-            { x: 0, y: -halfD },
             { x: halfW, y: -halfD },
-            { x: halfW, y: 0 },
             { x: halfW, y: halfD },
-            { x: 0, y: halfD },
             { x: -halfW, y: halfD },
-            { x: -halfW, y: 0 },
         ];
     }
 
     /**
-     * 根据层板数量生成均匀分布的层板高度。
-     * @param {number} panelCount
-     * @returns {number[]}
-     */
-    function buildPanelHeights(panelCount) {
-        const minZ = -MODEL.rodHeight * 0.35;
-        const maxZ = MODEL.rodHeight * 0.35;
-        const heights = [];
-        for (let index = 0; index < panelCount; index += 1) {
-            const z = minZ + ((index + 1) * (maxZ - minZ)) / (panelCount + 1);
-            heights.push(z);
-        }
-        return heights;
-    }
-
-    /**
-     * 枚举满足组合原则的所有 case。
-     * 本口径下变量只有层板数量，因此可直接遍历 panelCount。
+     * 生成 8 段 M1 杆线段：每个顶点 2 段（下段+上段）。
+     * @param {Array<{x:number,y:number}>} anchors
      * @returns {Array<object>}
      */
-    function enumerateCases() {
-        const anchors = buildRodAnchors();
-        const cases = [];
+    function buildRods(anchors) {
+        const half = MODEL.rodHeight / 2;
+        const rods = [];
 
-        for (
-            let panelCount = MODEL.minPanelPerRod;
-            panelCount <= MODEL.maxPanelPerRod;
-            panelCount += 1
-        ) {
-            const caseData = buildCase(panelCount, anchors);
-            const verify = verifyCase(caseData);
-            if (verify.ok) {
-                cases.push({
-                    ...caseData,
-                    verify,
-                });
-            }
-        }
+        anchors.forEach((anchor, index) => {
+            rods.push({
+                id: `rod-${index + 1}-L`,
+                kind: "segment",
+                lane: index,
+                start: { x: anchor.x, y: anchor.y, z: -half },
+                end: { x: anchor.x, y: anchor.y, z: 0 },
+                segmentLength: half,
+            });
+            rods.push({
+                id: `rod-${index + 1}-U`,
+                kind: "segment",
+                lane: index,
+                start: { x: anchor.x, y: anchor.y, z: 0 },
+                end: { x: anchor.x, y: anchor.y, z: half },
+                segmentLength: half,
+            });
+        });
 
-        return cases;
+        return rods;
     }
 
     /**
-     * 构建单个 case 的几何。
-     * @param {number} panelCount
+     * 按层位构建矩形面。
+     * @param {Array<{key:string,label:string,z:number}>} levels
+     * @param {Array<{x:number,y:number}>} anchors
+     * @returns {Array<object>}
+     */
+    function buildPanels(levels, anchors) {
+        return levels.map((level, index) => ({
+            id: `panel-${level.key}`,
+            key: level.key,
+            label: level.label,
+            z: level.z,
+            index,
+            corners: anchors.map((anchor) => ({ x: anchor.x, y: anchor.y, z: level.z })),
+        }));
+    }
+
+    /**
+     * 由 bitmask 生成层位组合。
+     * @param {number} mask
+     * @returns {Array<{key:string,label:string,z:number}>}
+     */
+    function levelsFromMask(mask) {
+        const half = MODEL.rodHeight / 2;
+        const chosen = [];
+        LEVELS.forEach((level, index) => {
+            if ((mask & (1 << index)) !== 0) {
+                chosen.push({
+                    key: level.key,
+                    label: level.label,
+                    z: level.zRatio * MODEL.rodHeight,
+                });
+            }
+        });
+        return chosen;
+    }
+
+    /**
+     * 枚举并过滤全部可行 case。
+     * @returns {{validCases:Array<object>, totalCandidates:number}}
+     */
+    function enumerateCases() {
+        const anchors = buildCornerAnchors();
+        const validCases = [];
+        let totalCandidates = 0;
+
+        for (let mask = 1; mask < (1 << LEVELS.length); mask += 1) {
+            totalCandidates += 1;
+            const levels = levelsFromMask(mask);
+            const caseData = buildCase(levels, anchors);
+            const verify = verifyCase(caseData);
+            if (!verify.ok) {
+                continue;
+            }
+            validCases.push({
+                ...caseData,
+                id: `Case-${levels.map((item) => item.key).join("")}`,
+                verify,
+            });
+        }
+
+        return { validCases, totalCandidates };
+    }
+
+    /**
+     * 构建单个 case 的几何与连接。
+     * @param {Array<{key:string,label:string,z:number}>} levels
      * @param {Array<{x:number,y:number}>} anchors
      * @returns {object}
      */
-    function buildCase(panelCount, anchors) {
-        const halfHeight = MODEL.rodHeight / 2;
-        const rods = anchors.map((anchor, index) => ({
-            id: `rod-${index + 1}`,
-            start: { x: anchor.x, y: anchor.y, z: -halfHeight },
-            end: { x: anchor.x, y: anchor.y, z: halfHeight },
-        }));
+    function buildCase(levels, anchors) {
+        const rods = buildRods(anchors);
+        const panels = buildPanels(levels, anchors);
 
-        const halfW = MODEL.footprintWidth / 2 - MODEL.panelInset;
-        const halfD = MODEL.footprintDepth / 2 - MODEL.panelInset;
-        const panelHeights = buildPanelHeights(panelCount);
+        const intersections = [];
+        rods.forEach((rod) => {
+            panels.forEach((panel) => {
+                const points = rodPanelIntersectionPoints(rod, panel);
+                points.forEach((point) => {
+                    intersections.push({
+                        rodId: rod.id,
+                        panelId: panel.id,
+                        point,
+                        atRodEndpoint: isRodEndpoint(point, rod),
+                        atPanelVertex: isPanelVertex(point, panel),
+                    });
+                });
+            });
+        });
 
-        const panels = panelHeights.map((z, index) => ({
-            id: `panel-${index + 1}`,
-            z,
-            corners: [
-                { x: -halfW, y: -halfD, z },
-                { x: halfW, y: -halfD, z },
-                { x: halfW, y: halfD, z },
-                { x: -halfW, y: halfD, z },
-            ],
-        }));
+        const rodDegreeById = Object.fromEntries(rods.map((rod) => [rod.id, 0]));
+        const panelDegreeById = Object.fromEntries(panels.map((panel) => [panel.id, 0]));
+        intersections.forEach((item) => {
+            rodDegreeById[item.rodId] += 1;
+            panelDegreeById[item.panelId] += 1;
+        });
 
         return {
-            id: `Case-${panelCount}`,
-            panelCount,
             rods,
             panels,
-            rodConnections: panelCount,
-            panelConnections: MODEL.m1,
-            incidenceMatrix: Array.from({ length: MODEL.m1 }, () =>
-                Array.from({ length: panelCount }, () => 1)
-            ),
+            levels,
+            intersections,
+            rodDegreeById,
+            panelDegreeById,
         };
     }
 
     /**
-     * 对 case 执行规则校验。
+     * 规则校验。
      * @param {object} caseData
      * @returns {{ok:boolean, checks:Record<string, boolean>}}
      */
     function verifyCase(caseData) {
         const rodCountOk = caseData.rods.length === MODEL.m1;
-        const panelCountOk = caseData.panelCount >= 1;
+        const panelCountOk = caseData.panels.length >= 1;
 
+        const rodSegmentOk = areAllRodsFiniteSegments(caseData.rods);
         const rodParallelOk = areAllRodsParallel(caseData.rods);
         const panelParallelOk = areAllPanelsParallel(caseData.panels);
         const perpendicularOk = areRodsPerpendicularToPanels(caseData.rods, caseData.panels);
 
-        const panelDegreeOk = caseData.panelConnections <= 8;
-        const rodDegreeOk =
-            caseData.rodConnections >= MODEL.minPanelPerRod &&
-            caseData.rodConnections <= MODEL.maxPanelPerRod;
+        const panelDegreeValues = Object.values(caseData.panelDegreeById);
+        const rodDegreeValues = Object.values(caseData.rodDegreeById);
+
+        const panelDegreeOk = panelDegreeValues.every((value) => value <= 8);
+        const rodDegreeOk = rodDegreeValues.every((value) => value <= 2);
+        const nonIsolatedOk =
+            panelDegreeValues.every((value) => value >= 1) &&
+            rodDegreeValues.every((value) => value >= 1);
+
+        const m1m1EndpointOnlyOk = areM1M1ConnectionsEndpointOnly(caseData.rods);
+        const m1m3OnRodEndpointOk = caseData.intersections.every((item) => item.atRodEndpoint);
+        const m1m3OnPanelVertexOk = caseData.intersections.every((item) => item.atPanelVertex);
 
         const m2Ok = MODEL.m2 === 2;
 
         const checks = {
-            R1_non_isolated: rodDegreeOk && panelCountOk,
-            R6_rods_parallel: rodParallelOk,
+            R1_non_isolated: nonIsolatedOk,
+            R6_rods_parallel: rodParallelOk && rodSegmentOk,
             R7_panels_parallel: panelParallelOk,
             R8_rod_panel_perpendicular: perpendicularOk,
             R9_panel_degree_le_8: panelDegreeOk,
             R10_rod_degree_le_2: rodDegreeOk,
             R11_m1_is_8: rodCountOk,
-            R12_m2_ge_2_fixed_2: m2Ok,
+            R12_m2_fixed_2: m2Ok,
+            R13_m1_m1_endpoint_only: m1m1EndpointOnlyOk,
+            R14_m1_m3_on_m1_endpoint: m1m3OnRodEndpointOk,
+            R15_m1_m3_on_m3_vertex: m1m3OnPanelVertexOk,
         };
 
-        const ok = Object.values(checks).every(Boolean);
+        const ok = panelCountOk && Object.values(checks).every(Boolean);
         return { ok, checks };
     }
 
     /**
+     * M1 与 M1 仅允许端点相连。
+     * 当前场景中所有杆平行，若同一直线上出现重叠区间则判为非法。
+     * @param {Array<object>} rods
+     * @returns {boolean}
+     */
+    function areM1M1ConnectionsEndpointOnly(rods) {
+        for (let i = 0; i < rods.length; i += 1) {
+            for (let j = i + 1; j < rods.length; j += 1) {
+                const a = rods[i];
+                const b = rods[j];
+                const sameLine =
+                    Math.abs(a.start.x - b.start.x) <= EPS &&
+                    Math.abs(a.start.y - b.start.y) <= EPS;
+                if (!sameLine) {
+                    continue;
+                }
+
+                const aMin = Math.min(a.start.z, a.end.z);
+                const aMax = Math.max(a.start.z, a.end.z);
+                const bMin = Math.min(b.start.z, b.end.z);
+                const bMax = Math.max(b.start.z, b.end.z);
+                const overlapMin = Math.max(aMin, bMin);
+                const overlapMax = Math.min(aMax, bMax);
+
+                if (overlapMax < overlapMin - EPS) {
+                    continue;
+                }
+
+                if (overlapMax - overlapMin > EPS) {
+                    return false;
+                }
+
+                const z = (overlapMin + overlapMax) / 2;
+                const point = { x: a.start.x, y: a.start.y, z };
+                if (!isRodEndpoint(point, a) || !isRodEndpoint(point, b)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 判断所有杆是否是有效有限线段。
+     * @param {Array<object>} rods
+     * @returns {boolean}
+     */
+    function areAllRodsFiniteSegments(rods) {
+        if (rods.length === 0) {
+            return false;
+        }
+        return rods.every((rod) => {
+            const finite =
+                Number.isFinite(rod.start.x) &&
+                Number.isFinite(rod.start.y) &&
+                Number.isFinite(rod.start.z) &&
+                Number.isFinite(rod.end.x) &&
+                Number.isFinite(rod.end.y) &&
+                Number.isFinite(rod.end.z);
+            if (!finite) {
+                return false;
+            }
+            const actualLength = length(sub(rod.end, rod.start));
+            return actualLength > EPS && Math.abs(actualLength - rod.segmentLength) <= EPS;
+        });
+    }
+
+    /**
      * 判断所有杆是否平行。
-     * @param {Array<{start:{x:number,y:number,z:number}, end:{x:number,y:number,z:number}}>} rods
+     * @param {Array<object>} rods
      * @returns {boolean}
      */
     function areAllRodsParallel(rods) {
@@ -440,8 +599,7 @@
         const base = normalize(sub(rods[0].end, rods[0].start));
         for (let index = 1; index < rods.length; index += 1) {
             const current = normalize(sub(rods[index].end, rods[index].start));
-            const crossLen = length(cross(base, current));
-            if (crossLen > 1e-6) {
+            if (length(cross(base, current)) > EPS) {
                 return false;
             }
         }
@@ -449,8 +607,8 @@
     }
 
     /**
-     * 判断所有层板法向是否平行。
-     * @param {Array<{corners:Array<{x:number,y:number,z:number}>}>} panels
+     * 判断所有层板是否平行。
+     * @param {Array<object>} panels
      * @returns {boolean}
      */
     function areAllPanelsParallel(panels) {
@@ -460,7 +618,7 @@
         const base = panelNormal(panels[0]);
         for (let index = 1; index < panels.length; index += 1) {
             const current = panelNormal(panels[index]);
-            if (length(cross(base, current)) > 1e-6) {
+            if (length(cross(base, current)) > EPS) {
                 return false;
             }
         }
@@ -468,9 +626,9 @@
     }
 
     /**
-     * 判断杆方向与层板法向是否互相垂直（即杆与层板平面垂直）。
-     * @param {Array<{start:{x:number,y:number,z:number}, end:{x:number,y:number,z:number}}>} rods
-     * @param {Array<{corners:Array<{x:number,y:number,z:number}>}>} panels
+     * 判断杆与层板是否互相垂直。
+     * @param {Array<object>} rods
+     * @param {Array<object>} panels
      * @returns {boolean}
      */
     function areRodsPerpendicularToPanels(rods, panels) {
@@ -480,14 +638,55 @@
         const rodDir = normalize(sub(rods[0].end, rods[0].start));
         const normal = panelNormal(panels[0]);
         const value = Math.abs(dot(rodDir, normal));
-        return Math.abs(value - 1) <= 1e-6;
+        return Math.abs(value - 1) <= EPS;
     }
 
     /**
-     * 获取层板法向。
-     * @param {{corners:Array<{x:number,y:number,z:number}>}} panel
-     * @returns {{x:number,y:number,z:number}}
+     * 计算杆与面在当前口径下的交点集合。
+     * @param {object} rod
+     * @param {object} panel
+     * @returns {Array<{x:number,y:number,z:number}>}
      */
+    function rodPanelIntersectionPoints(rod, panel) {
+        const minZ = Math.min(rod.start.z, rod.end.z);
+        const maxZ = Math.max(rod.start.z, rod.end.z);
+        if (panel.z < minZ - EPS || panel.z > maxZ + EPS) {
+            return [];
+        }
+
+        const xs = panel.corners.map((point) => point.x);
+        const ys = panel.corners.map((point) => point.y);
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+
+        if (rod.start.x < minX - EPS || rod.start.x > maxX + EPS) {
+            return [];
+        }
+        if (rod.start.y < minY - EPS || rod.start.y > maxY + EPS) {
+            return [];
+        }
+
+        return [{ x: rod.start.x, y: rod.start.y, z: panel.z }];
+    }
+
+    function isRodEndpoint(point, rod) {
+        return pointEq(point, rod.start) || pointEq(point, rod.end);
+    }
+
+    function isPanelVertex(point, panel) {
+        return panel.corners.some((corner) => pointEq(point, corner));
+    }
+
+    function pointEq(a, b) {
+        return (
+            Math.abs(a.x - b.x) <= EPS &&
+            Math.abs(a.y - b.y) <= EPS &&
+            Math.abs(a.z - b.z) <= EPS
+        );
+    }
+
     function panelNormal(panel) {
         const edgeA = sub(panel.corners[1], panel.corners[0]);
         const edgeB = sub(panel.corners[2], panel.corners[1]);
@@ -516,7 +715,7 @@
 
     function normalize(a) {
         const len = length(a);
-        if (len <= 1e-10) {
+        if (len <= EPS) {
             return { x: 0, y: 0, z: 0 };
         }
         return { x: a.x / len, y: a.y / len, z: a.z / len };
@@ -528,7 +727,7 @@
     const camera = {
         yaw: 0.95,
         pitch: -0.42,
-        distance: 6.6,
+        distance: 7.0,
         targetX: 0,
         targetY: 0,
         targetZ: 0,
@@ -540,7 +739,8 @@
     let lastY = 0;
     let activeIndex = 0;
 
-    const CASES = enumerateCases();
+    const ENUM_RESULT = enumerateCases();
+    const CASES = ENUM_RESULT.validCases;
 
     const caseCountEl = document.getElementById("case-count");
     const activeCaseEl = document.getElementById("active-case");
@@ -575,7 +775,7 @@
 
         const worldUp = { x: 0, y: 1, z: 0 };
         let right = normalize(cross(forward, worldUp));
-        if (length(right) < 1e-6) {
+        if (length(right) < EPS) {
             right = { x: 1, y: 0, z: 0 };
         }
         const up = normalize(cross(right, forward));
@@ -604,7 +804,7 @@
     }
 
     function drawGrid(basis) {
-        const floorZ = -MODEL.rodHeight * 0.52;
+        const floorY = -MODEL.rodHeight * 0.66;
         const size = 3.2;
         const step = 0.4;
 
@@ -612,9 +812,9 @@
         ctx.strokeStyle = COLORS.grid;
         ctx.lineWidth = 1;
 
-        for (let x = -size; x <= size + 1e-9; x += step) {
-            const p1 = project({ x, y: floorZ, z: -size }, basis);
-            const p2 = project({ x, y: floorZ, z: size }, basis);
+        for (let x = -size; x <= size + EPS; x += step) {
+            const p1 = project({ x, y: floorY, z: -size }, basis);
+            const p2 = project({ x, y: floorY, z: size }, basis);
             if (!p1 || !p2) {
                 continue;
             }
@@ -624,9 +824,9 @@
             ctx.stroke();
         }
 
-        for (let z = -size; z <= size + 1e-9; z += step) {
-            const p1 = project({ x: -size, y: floorZ, z }, basis);
-            const p2 = project({ x: size, y: floorZ, z }, basis);
+        for (let z = -size; z <= size + EPS; z += step) {
+            const p1 = project({ x: -size, y: floorY, z }, basis);
+            const p2 = project({ x: size, y: floorY, z }, basis);
             if (!p1 || !p2) {
                 continue;
             }
@@ -641,14 +841,14 @@
 
     function drawPanels(caseData, basis) {
         const projectedPanels = caseData.panels
-            .map((panel, index) => {
+            .map((panel) => {
                 const corners = panel.corners.map((corner) => project(corner, basis));
                 if (corners.some((item) => item === null)) {
                     return null;
                 }
                 const avgDepth = corners.reduce((sum, item) => sum + item.z, 0) / corners.length;
                 return {
-                    index,
+                    panel,
                     corners,
                     depth: avgDepth,
                 };
@@ -656,12 +856,13 @@
             .filter(Boolean)
             .sort((a, b) => b.depth - a.depth);
 
-        projectedPanels.forEach((panelInfo) => {
-            const fillColor = panelInfo.index % 2 === 0 ? COLORS.panelFillA : COLORS.panelFillB;
+        projectedPanels.forEach((item) => {
+            const palette = [COLORS.panelFillA, COLORS.panelFillB, COLORS.panelFillC];
+            const fillColor = palette[item.panel.index % palette.length];
             ctx.beginPath();
-            ctx.moveTo(panelInfo.corners[0].x, panelInfo.corners[0].y);
-            for (let index = 1; index < panelInfo.corners.length; index += 1) {
-                ctx.lineTo(panelInfo.corners[index].x, panelInfo.corners[index].y);
+            ctx.moveTo(item.corners[0].x, item.corners[0].y);
+            for (let index = 1; index < item.corners.length; index += 1) {
+                ctx.lineTo(item.corners[index].x, item.corners[index].y);
             }
             ctx.closePath();
             ctx.fillStyle = fillColor;
@@ -681,7 +882,7 @@
             }
 
             const depth = (p1.z + p2.z) / 2;
-            const lineWidth = Math.max(2, 18 / depth);
+            const lineWidth = Math.max(2, 16 / depth);
 
             ctx.beginPath();
             ctx.moveTo(p1.x, p1.y);
@@ -696,6 +897,34 @@
             ctx.lineTo(p2.x, p2.y);
             ctx.strokeStyle = COLORS.rod;
             ctx.lineWidth = lineWidth;
+            ctx.stroke();
+
+            const capRadius = Math.max(2.8, lineWidth * 0.62);
+            ctx.fillStyle = COLORS.rod;
+            ctx.beginPath();
+            ctx.arc(p1.x, p1.y, capRadius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(p2.x, p2.y, capRadius, 0, Math.PI * 2);
+            ctx.fill();
+        });
+    }
+
+    function drawConnections(caseData, basis) {
+        caseData.intersections.forEach((item) => {
+            const projected = project(item.point, basis);
+            if (!projected) {
+                return;
+            }
+            const radius = Math.max(3.2, 12 / projected.z);
+            ctx.beginPath();
+            ctx.arc(projected.x, projected.y, radius, 0, Math.PI * 2);
+            ctx.fillStyle = COLORS.conn;
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(projected.x, projected.y, radius + 1.8, 0, Math.PI * 2);
+            ctx.strokeStyle = "rgba(230,126,34,0.42)";
+            ctx.lineWidth = 1.2;
             ctx.stroke();
         });
     }
@@ -716,6 +945,7 @@
         drawGrid(basis);
         drawPanels(current, basis);
         drawRods(current, basis);
+        drawConnections(current, basis);
     }
 
     function renderCaseList() {
@@ -724,10 +954,13 @@
             const button = document.createElement("button");
             button.type = "button";
             button.className = `case-btn${index === activeIndex ? " active" : ""}`;
+            const levelText = item.levels.map((level) => level.label).join("+");
+            const maxPanelDegree = Math.max(...Object.values(item.panelDegreeById));
             button.innerHTML = `
                 <div><strong>${item.id}</strong></div>
-                <div class="mono">层板数 M3 = ${item.panelCount}</div>
-                <div class="mono">每杆连接层板数 = ${item.rodConnections}</div>
+                <div class="mono">层位 = ${levelText}</div>
+                <div class="mono">M3数量 = ${item.panels.length}</div>
+                <div class="mono">max(每面连接杆数) = ${maxPanelDegree}</div>
             `;
             button.addEventListener("click", () => {
                 activeIndex = index;
@@ -750,11 +983,22 @@
         }
 
         const current = CASES[activeIndex];
-        activeCaseEl.textContent = current.id;
-        caseSummaryEl.textContent = `M1=${MODEL.m1}, M2=${MODEL.m2}, M3=${current.panelCount}, ` +
-            `R9=${current.panelConnections}/8, R10=${current.rodConnections}/2`;
+        const levels = current.levels.map((item) => item.key).join("+");
+        const rodDegrees = Object.values(current.rodDegreeById);
+        const panelDegrees = Object.values(current.panelDegreeById);
+        const maxRod = Math.max(...rodDegrees);
+        const maxPanel = Math.max(...panelDegrees);
 
-        allCasesTextEl.textContent = CASES.map((item) => `${item.id}(M3=${item.panelCount})`).join("、");
+        activeCaseEl.textContent = current.id;
+        caseSummaryEl.textContent =
+            `M1=${MODEL.m1}(线段), M2=${MODEL.m2}, 层位=${levels}, M3=${current.panels.length}, ` +
+            `maxRodDeg=${maxRod}, maxPanelDeg=${maxPanel}`;
+
+        const caseText = CASES.map((item) => {
+            const key = item.levels.map((level) => level.key).join("");
+            return `${item.id}[${key}]`;
+        }).join("、");
+        allCasesTextEl.textContent = `总候选 ${ENUM_RESULT.totalCandidates} 种，满足约束 ${CASES.length} 种：${caseText}`;
         allCasesTextEl.className = "ok";
     }
 
@@ -762,7 +1006,7 @@
         camera.targetX = 0;
         camera.targetY = 0;
         camera.targetZ = 0;
-        camera.distance = 6.6;
+        camera.distance = 7.0;
         render();
     }
 
