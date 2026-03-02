@@ -91,6 +91,13 @@
                     "children": []
                   },
                   {
+                    "id": "NODE-L3-M1M2-HTML",
+                    "kind": "file",
+                    "level": "L3",
+                    "file": "docs/m1_8_m2_2_all_cases.html",
+                    "children": []
+                  },
+                  {
                     "id": "NODE-L3-REGISTRY",
                     "kind": "file",
                     "level": "L3",
@@ -118,6 +125,7 @@
       "l1_anchor": "## 1. 目标（Goal）",
       "l2_file": "standards/L2/置物架框架标准.md",
       "l2_anchor": "## 1. 目标（Goal）",
+      "sync_note": "L2 goal补充了G1-G5收敛约束，L3新增可行性全集可视化证据",
       "impl_symbols": [
         {
           "file": "src/shelf_framework.py",
@@ -126,6 +134,10 @@
         {
           "file": "src/main.py",
           "symbol": "goal = Goal("
+        },
+        {
+          "file": "docs/m1_8_m2_2_all_cases.html",
+          "symbol": "置物架约束下的组合全集（M1=8，M2=2）"
         }
       ]
     },
@@ -184,6 +196,7 @@
       "l1_anchor": "## 4. 组合原则（Combination Principles）",
       "l2_file": "standards/L2/置物架框架标准.md",
       "l2_anchor": "## 4. 组合原则（Combination Principles）",
+      "sync_note": "L2组合原则增加R1-R12命名，L3通过HTML补充M1=8,M2=2全集判定证据",
       "impl_symbols": [
         {
           "file": "src/shelf_framework.py",
@@ -196,6 +209,10 @@
         {
           "file": "src/shelf_framework.py",
           "symbol": "def default()"
+        },
+        {
+          "file": "docs/m1_8_m2_2_all_cases.html",
+          "symbol": "所有可能情况（满足全部约束）"
         }
       ]
     },
