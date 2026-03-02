@@ -1,0 +1,863 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>M1=8, M2=2 组合全集 3D 可视化</title>
+    <style>
+        :root {
+            --bg: #f2f6fb;
+            --card: #ffffff;
+            --line: #d7e3f4;
+            --text: #11243a;
+            --muted: #53657b;
+            --accent: #0d5ea6;
+            --accent-2: #1f7b45;
+            --warn: #c44536;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            color: var(--text);
+            font-family: "Source Han Sans CN", "PingFang SC", "Microsoft YaHei", sans-serif;
+            background:
+                radial-gradient(circle at 8% 5%, #dce9fb 0%, transparent 30%),
+                radial-gradient(circle at 95% 0%, #e4f4ec 0%, transparent 24%),
+                var(--bg);
+        }
+
+        .page {
+            max-width: 1220px;
+            margin: 0 auto;
+            padding: 24px 16px 36px;
+        }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 14px;
+            box-shadow: 0 8px 20px rgba(17, 36, 58, 0.05);
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 28px;
+            line-height: 1.2;
+            letter-spacing: 0.2px;
+        }
+
+        h2 {
+            margin: 0 0 10px;
+            font-size: 18px;
+        }
+
+        p {
+            margin: 8px 0;
+            line-height: 1.6;
+        }
+
+        ul {
+            margin: 8px 0 0;
+            padding-left: 20px;
+        }
+
+        li {
+            margin: 6px 0;
+            line-height: 1.55;
+        }
+
+        .muted {
+            color: var(--muted);
+        }
+
+        .pill {
+            display: inline-block;
+            margin-top: 10px;
+            margin-right: 8px;
+            padding: 5px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            border: 1px solid var(--line);
+            color: var(--muted);
+            background: #f8fbff;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 14px;
+        }
+
+        .viewer-wrap {
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            background: linear-gradient(180deg, #edf4fd 0%, #f9fbfe 100%);
+            overflow: hidden;
+        }
+
+        #viewer {
+            width: 100%;
+            height: 520px;
+            display: block;
+            touch-action: none;
+            cursor: grab;
+        }
+
+        #viewer.dragging {
+            cursor: grabbing;
+        }
+
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        button {
+            border: 1px solid var(--line);
+            background: #ffffff;
+            color: var(--text);
+            border-radius: 10px;
+            padding: 8px 12px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            border-color: #9fb6d3;
+            background: #f7fbff;
+        }
+
+        .primary {
+            border-color: #86b7e5;
+            background: #eaf5ff;
+            color: #0a4f8d;
+        }
+
+        .stat {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .stat .item {
+            border: 1px dashed var(--line);
+            border-radius: 10px;
+            padding: 10px;
+            background: #fbfdff;
+        }
+
+        .value {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        .case-list {
+            display: grid;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .case-btn {
+            text-align: left;
+            width: 100%;
+            border-radius: 12px;
+            padding: 10px;
+            border: 1px solid var(--line);
+            background: #ffffff;
+        }
+
+        .case-btn.active {
+            border-color: #76aee6;
+            background: #edf6ff;
+        }
+
+        .ok {
+            color: var(--accent-2);
+            font-weight: 600;
+        }
+
+        .warn {
+            color: var(--warn);
+            font-weight: 600;
+        }
+
+        .mono {
+            font-family: "JetBrains Mono", "Fira Code", monospace;
+            font-size: 13px;
+        }
+
+        @media (max-width: 980px) {
+            .layout {
+                grid-template-columns: 1fr;
+            }
+
+            #viewer {
+                height: 420px;
+            }
+        }
+    </style>
+</head>
+<body>
+<main class="page">
+    <section class="card">
+        <h1>置物架约束下的组合全集（M1=8，M2=2）</h1>
+        <p class="muted">3D 交互说明：左键拖拽旋转，<span class="mono">Shift + 左键</span> 或右键拖拽平移，滚轮缩放。</p>
+        <span class="pill">仅绘制 M1(杆) + M3(面)</span>
+        <span class="pill">M2=2 作为接口语义参与约束，不单独绘制</span>
+        <span class="pill">先枚举再可视化</span>
+    </section>
+
+    <section class="layout">
+        <section class="card">
+            <h2>3D 视图</h2>
+            <div class="viewer-wrap">
+                <canvas id="viewer"></canvas>
+            </div>
+            <div class="toolbar">
+                <button id="prev-btn">上一种</button>
+                <button id="next-btn">下一种</button>
+                <button id="reset-btn">重置视角</button>
+                <button id="fit-btn" class="primary">聚焦当前结构</button>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2>枚举结果</h2>
+            <div class="stat">
+                <div class="item">
+                    <div class="muted">有效 case 数</div>
+                    <div class="value" id="case-count">-</div>
+                </div>
+                <div class="item">
+                    <div class="muted">当前 case</div>
+                    <div class="value" id="active-case">-</div>
+                </div>
+            </div>
+            <p class="mono" id="case-summary">-</p>
+            <div class="case-list" id="case-list"></div>
+        </section>
+    </section>
+
+    <section class="card">
+        <h2>建模口径（用于把组合原则映射为可计算的 3D 场景）</h2>
+        <ul>
+            <li><span class="mono">A1</span>：固定 <span class="mono">M1=8</span>，8 根杆布置在长方体底面外轮廓的 8 个离散支撑位上，且全部平行。</li>
+            <li><span class="mono">A2</span>：每块 <span class="mono">M3</span> 表示一块完整矩形层板（同一外轮廓），所有层板相互平行并与杆垂直。</li>
+            <li><span class="mono">A3</span>：连接接口 <span class="mono">M2=2</span> 作为装配语义参与约束，不作为可视几何体绘制。</li>
+            <li><span class="mono">A4</span>：每块层板连接全部 8 根杆；因此每根杆连接的层板数等于层板总数，且需满足 <span class="mono">1 ≤ 度 ≤ 2</span>。</li>
+        </ul>
+    </section>
+
+    <section class="card">
+        <h2>所有可能情况（满足全部约束）</h2>
+        <p id="all-cases-text" class="ok"></p>
+        <p class="muted">说明：在上述口径下，枚举变量只有层板数量。由 <span class="mono">R9</span>/<span class="mono">R10</span> 可推出有效层板数只能是 1 或 2。</p>
+    </section>
+</main>
+
+<script>
+    "use strict";
+
+    const MODEL = Object.freeze({
+        m1: 8,
+        m2: 2,
+        rodHeight: 2.6,
+        footprintWidth: 2.6,
+        footprintDepth: 1.5,
+        panelInset: 0.06,
+        minPanelPerRod: 1,
+        maxPanelPerRod: 2,
+    });
+
+    const COLORS = Object.freeze({
+        rod: "#123e66",
+        rodGlow: "rgba(18, 62, 102, 0.24)",
+        panelFillA: "rgba(13, 94, 166, 0.20)",
+        panelFillB: "rgba(31, 123, 69, 0.20)",
+        panelEdge: "rgba(25, 62, 92, 0.80)",
+        grid: "rgba(80, 110, 140, 0.18)",
+    });
+
+    /**
+     * 生成 8 个杆的底面锚点。
+     * 锚点沿长方体外轮廓离散布置，满足“长方体型 + 杆平行”的可视化口径。
+     * @returns {Array<{x:number,y:number}>}
+     */
+    function buildRodAnchors() {
+        const halfW = MODEL.footprintWidth / 2;
+        const halfD = MODEL.footprintDepth / 2;
+        return [
+            { x: -halfW, y: -halfD },
+            { x: 0, y: -halfD },
+            { x: halfW, y: -halfD },
+            { x: halfW, y: 0 },
+            { x: halfW, y: halfD },
+            { x: 0, y: halfD },
+            { x: -halfW, y: halfD },
+            { x: -halfW, y: 0 },
+        ];
+    }
+
+    /**
+     * 根据层板数量生成均匀分布的层板高度。
+     * @param {number} panelCount
+     * @returns {number[]}
+     */
+    function buildPanelHeights(panelCount) {
+        const minZ = -MODEL.rodHeight * 0.35;
+        const maxZ = MODEL.rodHeight * 0.35;
+        const heights = [];
+        for (let index = 0; index < panelCount; index += 1) {
+            const z = minZ + ((index + 1) * (maxZ - minZ)) / (panelCount + 1);
+            heights.push(z);
+        }
+        return heights;
+    }
+
+    /**
+     * 枚举满足组合原则的所有 case。
+     * 本口径下变量只有层板数量，因此可直接遍历 panelCount。
+     * @returns {Array<object>}
+     */
+    function enumerateCases() {
+        const anchors = buildRodAnchors();
+        const cases = [];
+
+        for (
+            let panelCount = MODEL.minPanelPerRod;
+            panelCount <= MODEL.maxPanelPerRod;
+            panelCount += 1
+        ) {
+            const caseData = buildCase(panelCount, anchors);
+            const verify = verifyCase(caseData);
+            if (verify.ok) {
+                cases.push({
+                    ...caseData,
+                    verify,
+                });
+            }
+        }
+
+        return cases;
+    }
+
+    /**
+     * 构建单个 case 的几何。
+     * @param {number} panelCount
+     * @param {Array<{x:number,y:number}>} anchors
+     * @returns {object}
+     */
+    function buildCase(panelCount, anchors) {
+        const halfHeight = MODEL.rodHeight / 2;
+        const rods = anchors.map((anchor, index) => ({
+            id: `rod-${index + 1}`,
+            start: { x: anchor.x, y: anchor.y, z: -halfHeight },
+            end: { x: anchor.x, y: anchor.y, z: halfHeight },
+        }));
+
+        const halfW = MODEL.footprintWidth / 2 - MODEL.panelInset;
+        const halfD = MODEL.footprintDepth / 2 - MODEL.panelInset;
+        const panelHeights = buildPanelHeights(panelCount);
+
+        const panels = panelHeights.map((z, index) => ({
+            id: `panel-${index + 1}`,
+            z,
+            corners: [
+                { x: -halfW, y: -halfD, z },
+                { x: halfW, y: -halfD, z },
+                { x: halfW, y: halfD, z },
+                { x: -halfW, y: halfD, z },
+            ],
+        }));
+
+        return {
+            id: `Case-${panelCount}`,
+            panelCount,
+            rods,
+            panels,
+            rodConnections: panelCount,
+            panelConnections: MODEL.m1,
+            incidenceMatrix: Array.from({ length: MODEL.m1 }, () =>
+                Array.from({ length: panelCount }, () => 1)
+            ),
+        };
+    }
+
+    /**
+     * 对 case 执行规则校验。
+     * @param {object} caseData
+     * @returns {{ok:boolean, checks:Record<string, boolean>}}
+     */
+    function verifyCase(caseData) {
+        const rodCountOk = caseData.rods.length === MODEL.m1;
+        const panelCountOk = caseData.panelCount >= 1;
+
+        const rodParallelOk = areAllRodsParallel(caseData.rods);
+        const panelParallelOk = areAllPanelsParallel(caseData.panels);
+        const perpendicularOk = areRodsPerpendicularToPanels(caseData.rods, caseData.panels);
+
+        const panelDegreeOk = caseData.panelConnections <= 8;
+        const rodDegreeOk =
+            caseData.rodConnections >= MODEL.minPanelPerRod &&
+            caseData.rodConnections <= MODEL.maxPanelPerRod;
+
+        const m2Ok = MODEL.m2 === 2;
+
+        const checks = {
+            R1_non_isolated: rodDegreeOk && panelCountOk,
+            R6_rods_parallel: rodParallelOk,
+            R7_panels_parallel: panelParallelOk,
+            R8_rod_panel_perpendicular: perpendicularOk,
+            R9_panel_degree_le_8: panelDegreeOk,
+            R10_rod_degree_le_2: rodDegreeOk,
+            R11_m1_is_8: rodCountOk,
+            R12_m2_ge_2_fixed_2: m2Ok,
+        };
+
+        const ok = Object.values(checks).every(Boolean);
+        return { ok, checks };
+    }
+
+    /**
+     * 判断所有杆是否平行。
+     * @param {Array<{start:{x:number,y:number,z:number}, end:{x:number,y:number,z:number}}>} rods
+     * @returns {boolean}
+     */
+    function areAllRodsParallel(rods) {
+        if (rods.length <= 1) {
+            return true;
+        }
+        const base = normalize(sub(rods[0].end, rods[0].start));
+        for (let index = 1; index < rods.length; index += 1) {
+            const current = normalize(sub(rods[index].end, rods[index].start));
+            const crossLen = length(cross(base, current));
+            if (crossLen > 1e-6) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 判断所有层板法向是否平行。
+     * @param {Array<{corners:Array<{x:number,y:number,z:number}>}>} panels
+     * @returns {boolean}
+     */
+    function areAllPanelsParallel(panels) {
+        if (panels.length <= 1) {
+            return true;
+        }
+        const base = panelNormal(panels[0]);
+        for (let index = 1; index < panels.length; index += 1) {
+            const current = panelNormal(panels[index]);
+            if (length(cross(base, current)) > 1e-6) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 判断杆方向与层板法向是否互相垂直（即杆与层板平面垂直）。
+     * @param {Array<{start:{x:number,y:number,z:number}, end:{x:number,y:number,z:number}}>} rods
+     * @param {Array<{corners:Array<{x:number,y:number,z:number}>}>} panels
+     * @returns {boolean}
+     */
+    function areRodsPerpendicularToPanels(rods, panels) {
+        if (rods.length === 0 || panels.length === 0) {
+            return false;
+        }
+        const rodDir = normalize(sub(rods[0].end, rods[0].start));
+        const normal = panelNormal(panels[0]);
+        const value = Math.abs(dot(rodDir, normal));
+        return Math.abs(value - 1) <= 1e-6;
+    }
+
+    /**
+     * 获取层板法向。
+     * @param {{corners:Array<{x:number,y:number,z:number}>}} panel
+     * @returns {{x:number,y:number,z:number}}
+     */
+    function panelNormal(panel) {
+        const edgeA = sub(panel.corners[1], panel.corners[0]);
+        const edgeB = sub(panel.corners[2], panel.corners[1]);
+        return normalize(cross(edgeA, edgeB));
+    }
+
+    function sub(a, b) {
+        return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
+    }
+
+    function dot(a, b) {
+        return a.x * b.x + a.y * b.y + a.z * b.z;
+    }
+
+    function cross(a, b) {
+        return {
+            x: a.y * b.z - a.z * b.y,
+            y: a.z * b.x - a.x * b.z,
+            z: a.x * b.y - a.y * b.x,
+        };
+    }
+
+    function length(a) {
+        return Math.sqrt(dot(a, a));
+    }
+
+    function normalize(a) {
+        const len = length(a);
+        if (len <= 1e-10) {
+            return { x: 0, y: 0, z: 0 };
+        }
+        return { x: a.x / len, y: a.y / len, z: a.z / len };
+    }
+
+    const canvas = document.getElementById("viewer");
+    const ctx = canvas.getContext("2d");
+
+    const camera = {
+        yaw: 0.95,
+        pitch: -0.42,
+        distance: 6.6,
+        targetX: 0,
+        targetY: 0,
+        targetZ: 0,
+    };
+
+    let dragging = false;
+    let dragMode = "rotate";
+    let lastX = 0;
+    let lastY = 0;
+    let activeIndex = 0;
+
+    const CASES = enumerateCases();
+
+    const caseCountEl = document.getElementById("case-count");
+    const activeCaseEl = document.getElementById("active-case");
+    const caseSummaryEl = document.getElementById("case-summary");
+    const caseListEl = document.getElementById("case-list");
+    const allCasesTextEl = document.getElementById("all-cases-text");
+
+    function resizeCanvas() {
+        const dpr = window.devicePixelRatio || 1;
+        const cssWidth = canvas.clientWidth;
+        const cssHeight = canvas.clientHeight;
+        canvas.width = Math.max(1, Math.round(cssWidth * dpr));
+        canvas.height = Math.max(1, Math.round(cssHeight * dpr));
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        render();
+    }
+
+    function cameraBasis() {
+        const cp = Math.cos(camera.pitch);
+        const sp = Math.sin(camera.pitch);
+        const cy = Math.cos(camera.yaw);
+        const sy = Math.sin(camera.yaw);
+
+        const position = {
+            x: camera.targetX + camera.distance * cp * sy,
+            y: camera.targetY + camera.distance * sp,
+            z: camera.targetZ + camera.distance * cp * cy,
+        };
+
+        const target = { x: camera.targetX, y: camera.targetY, z: camera.targetZ };
+        const forward = normalize(sub(target, position));
+
+        const worldUp = { x: 0, y: 1, z: 0 };
+        let right = normalize(cross(forward, worldUp));
+        if (length(right) < 1e-6) {
+            right = { x: 1, y: 0, z: 0 };
+        }
+        const up = normalize(cross(right, forward));
+
+        return {
+            position,
+            forward,
+            right,
+            up,
+            focal: Math.min(canvas.clientWidth, canvas.clientHeight) * 0.82,
+        };
+    }
+
+    function project(point, basis) {
+        const v = sub(point, basis.position);
+        const x = dot(v, basis.right);
+        const y = dot(v, basis.up);
+        const z = dot(v, basis.forward);
+        if (z <= 0.1) {
+            return null;
+        }
+
+        const px = canvas.clientWidth * 0.5 + (x * basis.focal) / z;
+        const py = canvas.clientHeight * 0.5 - (y * basis.focal) / z;
+        return { x: px, y: py, z };
+    }
+
+    function drawGrid(basis) {
+        const floorZ = -MODEL.rodHeight * 0.52;
+        const size = 3.2;
+        const step = 0.4;
+
+        ctx.save();
+        ctx.strokeStyle = COLORS.grid;
+        ctx.lineWidth = 1;
+
+        for (let x = -size; x <= size + 1e-9; x += step) {
+            const p1 = project({ x, y: floorZ, z: -size }, basis);
+            const p2 = project({ x, y: floorZ, z: size }, basis);
+            if (!p1 || !p2) {
+                continue;
+            }
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.stroke();
+        }
+
+        for (let z = -size; z <= size + 1e-9; z += step) {
+            const p1 = project({ x: -size, y: floorZ, z }, basis);
+            const p2 = project({ x: size, y: floorZ, z }, basis);
+            if (!p1 || !p2) {
+                continue;
+            }
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.stroke();
+        }
+
+        ctx.restore();
+    }
+
+    function drawPanels(caseData, basis) {
+        const projectedPanels = caseData.panels
+            .map((panel, index) => {
+                const corners = panel.corners.map((corner) => project(corner, basis));
+                if (corners.some((item) => item === null)) {
+                    return null;
+                }
+                const avgDepth = corners.reduce((sum, item) => sum + item.z, 0) / corners.length;
+                return {
+                    index,
+                    corners,
+                    depth: avgDepth,
+                };
+            })
+            .filter(Boolean)
+            .sort((a, b) => b.depth - a.depth);
+
+        projectedPanels.forEach((panelInfo) => {
+            const fillColor = panelInfo.index % 2 === 0 ? COLORS.panelFillA : COLORS.panelFillB;
+            ctx.beginPath();
+            ctx.moveTo(panelInfo.corners[0].x, panelInfo.corners[0].y);
+            for (let index = 1; index < panelInfo.corners.length; index += 1) {
+                ctx.lineTo(panelInfo.corners[index].x, panelInfo.corners[index].y);
+            }
+            ctx.closePath();
+            ctx.fillStyle = fillColor;
+            ctx.fill();
+            ctx.strokeStyle = COLORS.panelEdge;
+            ctx.lineWidth = 1.8;
+            ctx.stroke();
+        });
+    }
+
+    function drawRods(caseData, basis) {
+        caseData.rods.forEach((rod) => {
+            const p1 = project(rod.start, basis);
+            const p2 = project(rod.end, basis);
+            if (!p1 || !p2) {
+                return;
+            }
+
+            const depth = (p1.z + p2.z) / 2;
+            const lineWidth = Math.max(2, 18 / depth);
+
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.lineCap = "round";
+            ctx.strokeStyle = COLORS.rodGlow;
+            ctx.lineWidth = lineWidth + 3;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.strokeStyle = COLORS.rod;
+            ctx.lineWidth = lineWidth;
+            ctx.stroke();
+        });
+    }
+
+    function render() {
+        ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+
+        if (CASES.length === 0) {
+            ctx.fillStyle = "#c44536";
+            ctx.font = "600 18px Source Han Sans CN, PingFang SC, sans-serif";
+            ctx.fillText("没有可行 case", 24, 36);
+            return;
+        }
+
+        const current = CASES[activeIndex];
+        const basis = cameraBasis();
+
+        drawGrid(basis);
+        drawPanels(current, basis);
+        drawRods(current, basis);
+    }
+
+    function renderCaseList() {
+        caseListEl.innerHTML = "";
+        CASES.forEach((item, index) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = `case-btn${index === activeIndex ? " active" : ""}`;
+            button.innerHTML = `
+                <div><strong>${item.id}</strong></div>
+                <div class="mono">层板数 M3 = ${item.panelCount}</div>
+                <div class="mono">每杆连接层板数 = ${item.rodConnections}</div>
+            `;
+            button.addEventListener("click", () => {
+                activeIndex = index;
+                syncCaseInfo();
+                renderCaseList();
+                fitToCurrentCase();
+            });
+            caseListEl.appendChild(button);
+        });
+    }
+
+    function syncCaseInfo() {
+        caseCountEl.textContent = String(CASES.length);
+        if (CASES.length === 0) {
+            activeCaseEl.textContent = "-";
+            caseSummaryEl.textContent = "无可行结构";
+            allCasesTextEl.textContent = "有效可行集：∅";
+            allCasesTextEl.className = "warn";
+            return;
+        }
+
+        const current = CASES[activeIndex];
+        activeCaseEl.textContent = current.id;
+        caseSummaryEl.textContent = `M1=${MODEL.m1}, M2=${MODEL.m2}, M3=${current.panelCount}, ` +
+            `R9=${current.panelConnections}/8, R10=${current.rodConnections}/2`;
+
+        allCasesTextEl.textContent = CASES.map((item) => `${item.id}(M3=${item.panelCount})`).join("、");
+        allCasesTextEl.className = "ok";
+    }
+
+    function fitToCurrentCase() {
+        camera.targetX = 0;
+        camera.targetY = 0;
+        camera.targetZ = 0;
+        camera.distance = 6.6;
+        render();
+    }
+
+    function resetCamera() {
+        camera.yaw = 0.95;
+        camera.pitch = -0.42;
+        fitToCurrentCase();
+    }
+
+    function nextCase(step) {
+        if (CASES.length === 0) {
+            return;
+        }
+        activeIndex = (activeIndex + step + CASES.length) % CASES.length;
+        syncCaseInfo();
+        renderCaseList();
+        render();
+    }
+
+    document.getElementById("prev-btn").addEventListener("click", () => nextCase(-1));
+    document.getElementById("next-btn").addEventListener("click", () => nextCase(1));
+    document.getElementById("reset-btn").addEventListener("click", resetCamera);
+    document.getElementById("fit-btn").addEventListener("click", fitToCurrentCase);
+
+    canvas.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+    });
+
+    canvas.addEventListener("pointerdown", (event) => {
+        dragging = true;
+        dragMode = event.button === 2 || event.shiftKey ? "pan" : "rotate";
+        lastX = event.clientX;
+        lastY = event.clientY;
+        canvas.classList.add("dragging");
+        canvas.setPointerCapture(event.pointerId);
+    });
+
+    canvas.addEventListener("pointermove", (event) => {
+        if (!dragging) {
+            return;
+        }
+
+        const dx = event.clientX - lastX;
+        const dy = event.clientY - lastY;
+        lastX = event.clientX;
+        lastY = event.clientY;
+
+        if (dragMode === "rotate") {
+            camera.yaw += dx * 0.008;
+            camera.pitch += dy * 0.008;
+            camera.pitch = Math.max(-1.35, Math.min(1.35, camera.pitch));
+        } else {
+            const panScale = camera.distance * 0.0024;
+            camera.targetX -= dx * panScale;
+            camera.targetY += dy * panScale;
+        }
+
+        render();
+    });
+
+    function stopDragging(event) {
+        if (!dragging) {
+            return;
+        }
+        dragging = false;
+        canvas.classList.remove("dragging");
+        if (event.pointerId !== undefined) {
+            try {
+                canvas.releasePointerCapture(event.pointerId);
+            } catch (_) {
+                // 忽略非关键释放错误
+            }
+        }
+    }
+
+    canvas.addEventListener("pointerup", stopDragging);
+    canvas.addEventListener("pointercancel", stopDragging);
+
+    canvas.addEventListener(
+        "wheel",
+        (event) => {
+            event.preventDefault();
+            const factor = Math.exp(event.deltaY * 0.0012);
+            camera.distance = Math.max(2.3, Math.min(16, camera.distance * factor));
+            render();
+        },
+        { passive: false }
+    );
+
+    window.addEventListener("resize", resizeCanvas);
+
+    syncCaseInfo();
+    renderCaseList();
+    resetCamera();
+    resizeCanvas();
+</script>
+</body>
+</html>
