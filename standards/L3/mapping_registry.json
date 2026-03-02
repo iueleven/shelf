@@ -94,7 +94,7 @@
                     "id": "NODE-L3-M1M2-HTML",
                     "kind": "file",
                     "level": "L3",
-                    "file": "docs/m1_8_m2_2_all_cases.html",
+                    "file": "docs/m1_8_m3_2_all_cases.html",
                     "children": []
                   },
                   {
@@ -136,7 +136,7 @@
           "symbol": "goal = Goal("
         },
         {
-          "file": "docs/m1_8_m2_2_all_cases.html",
+          "file": "docs/m1_8_m3_2_all_cases.html",
           "symbol": "置物架约束下的组合全集（M1=8，M2=2）"
         }
       ]
@@ -211,7 +211,7 @@
           "symbol": "def default()"
         },
         {
-          "file": "docs/m1_8_m2_2_all_cases.html",
+          "file": "docs/m1_8_m3_2_all_cases.html",
           "symbol": "所有可能情况（满足全部约束）"
         }
       ]
