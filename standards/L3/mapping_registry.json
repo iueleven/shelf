@@ -149,6 +149,7 @@
       "l1_anchor": "## 2. 边界定义（Boundary）",
       "l2_file": "standards/L2/置物架框架标准.md",
       "l2_anchor": "## 2. 边界定义（Boundary）",
+      "sync_note": "L2边界定义补充了N=M3语义、每层空间/承重参数，以及效率口径相关面积参数（A_panel_i/A_panel_sum/A_footprint_proj）",
       "impl_symbols": [
         {
           "file": "src/shelf_framework.py",
@@ -196,7 +197,7 @@
       "l1_anchor": "## 4. 组合原则（Combination Principles）",
       "l2_file": "standards/L2/置物架框架标准.md",
       "l2_anchor": "## 4. 组合原则（Combination Principles）",
-      "sync_note": "L2组合原则重排为A-E分组并补充可合并表达，规则语义与编号保持不变；L3仍由HTML提供R13-R17可视化判定证据",
+      "sync_note": "L2组合原则按A-E分组重排并重编号为连续R1-R17；L3 HTML 已同步更新为R9-R17相关可视化判定",
       "impl_symbols": [
         {
           "file": "src/shelf_framework.py",
@@ -212,7 +213,7 @@
         },
         {
           "file": "docs/m1_8_m3_2_all_cases.html",
-          "symbol": "所有可能情况（满足全部约束）"
+          "symbol": "当前情况验证"
         }
       ]
     },
@@ -224,6 +225,7 @@
       "l1_anchor": "## 5. 验证（Verification）",
       "l2_file": "standards/L2/置物架框架标准.md",
       "l2_anchor": "## 5. 验证（Verification）",
+      "sync_note": "L2验证补充逐层空间与逐层承重公式，并将效率定义明确为总板面积/俯视占地面积后再执行优于基线判定",
       "impl_symbols": [
         {
           "file": "src/shelf_framework.py",

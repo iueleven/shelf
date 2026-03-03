@@ -169,6 +169,18 @@
             margin-top: 10px;
         }
 
+        .verify-list {
+            margin-top: 8px;
+            display: grid;
+            gap: 5px;
+            max-height: 260px;
+            overflow: auto;
+            padding: 8px;
+            border: 1px dashed var(--line);
+            border-radius: 10px;
+            background: #fbfdff;
+        }
+
         .case-btn {
             text-align: left;
             width: 100%;
@@ -253,13 +265,16 @@
                 <button id="reset-btn">重置视角</button>
                 <button id="fit-btn" class="primary">聚焦当前结构</button>
             </div>
+            <p class="mono"><strong>当前情况验证</strong></p>
+            <p class="mono" id="case-verify-summary">-</p>
+            <div class="verify-list" id="case-verify-list"></div>
         </section>
 
         <section class="card">
             <h2>枚举结果</h2>
             <div class="stat">
                 <div class="item">
-                    <div class="muted">有效 case 数</div>
+                    <div class="muted">总 case 数</div>
                     <div class="value" id="case-count">-</div>
                 </div>
                 <div class="item">
@@ -270,23 +285,6 @@
             <p class="mono" id="case-summary">-</p>
             <div class="case-list" id="case-list"></div>
         </section>
-    </section>
-
-    <section class="card">
-        <h2>建模口径（用于把组合原则映射为可计算的 3D 场景）</h2>
-        <ul>
-            <li><span class="mono">A1</span>：固定 <span class="mono">M1=8</span>。4 个矩形顶点位置，每个顶点放置 2 段共线杆（下段/上段），共 8 段线段。</li>
-            <li><span class="mono">A2</span>：候选层板高度仅取 <span class="mono">底/中/顶</span> 三个离散层位；每块 <span class="mono">M3</span> 都是同外轮廓矩形。</li>
-            <li><span class="mono">A3</span>：连接判定只允许端点/顶点匹配；即 <span class="mono">R9-R11</span> 直接作为几何过滤条件。</li>
-            <li><span class="mono">A4</span>：额外强约束：<span class="mono">M1=8</span>、<span class="mono">M3=2</span>（对应 <span class="mono">R15/R16</span>）。</li>
-            <li><span class="mono">A5</span>：枚举变量是三层位的启用子集，逐一计算并过滤不满足规则的情况。</li>
-        </ul>
-    </section>
-
-    <section class="card">
-        <h2>所有可能情况（满足全部约束）</h2>
-        <p id="all-cases-text" class="ok"></p>
-        <p class="muted">说明：算法会检查 <span class="mono">R9-R17</span>，仅保留“端点/顶点连接 + M1=8 + M3=2”的 case。</p>
     </section>
 </main>
 
@@ -301,6 +299,21 @@
         rodHeight: 2.8,
         footprintWidth: 2.8,
         footprintDepth: 1.8,
+    });
+
+    const BOUNDARY_PROFILE = Object.freeze({
+        reqSpaceLength: 2.6,
+        reqSpaceWidth: 1.6,
+        reqSpaceHeight: 0.56,
+        effSpaceLength: 2.72,
+        effSpaceWidth: 1.72,
+        effSpaceHeight: 0.62,
+        reqPayloadPerLayer: 12,
+        pPanel: 30,
+        pConnSingle: 5,
+        pRodSingle: 12,
+        pGlobal: 40,
+        gamma: 1.5,
     });
 
     const COLORS = Object.freeze({
@@ -404,11 +417,12 @@
     }
 
     /**
-     * 枚举并过滤全部可行 case。
-     * @returns {{validCases:Array<object>, totalCandidates:number}}
+     * 枚举全部 case，并标注每个 case 的验证结果。
+     * @returns {{allCases:Array<object>, validCases:Array<object>, totalCandidates:number}}
      */
     function enumerateCases() {
         const anchors = buildCornerAnchors();
+        const allCases = [];
         const validCases = [];
         let totalCandidates = 0;
 
@@ -417,17 +431,18 @@
             const levels = levelsFromMask(mask);
             const caseData = buildCase(levels, anchors);
             const verify = verifyCase(caseData);
-            if (!verify.ok) {
-                continue;
-            }
-            validCases.push({
+            const caseItem = {
                 ...caseData,
                 id: `Case-${levels.map((item) => item.key).join("")}`,
                 verify,
-            });
+            };
+            allCases.push(caseItem);
+            if (verify.ok) {
+                validCases.push(caseItem);
+            }
         }
 
-        return { validCases, totalCandidates };
+        return { allCases, validCases, totalCandidates };
     }
 
     /**
@@ -503,6 +518,40 @@
         const m1m3OnPanelVertexOk = caseData.intersections.every((item) => item.atPanelVertex);
 
         const m2Ok = MODEL.m2 === 2;
+        const boundaryInput = buildBoundaryInput(caseData);
+        const boundaryNOk = boundaryInput.N === caseData.panels.length;
+        const boundaryLengthOk =
+            boundaryInput.spaceReq.length === boundaryInput.N &&
+            boundaryInput.spaceEff.length === boundaryInput.N &&
+            boundaryInput.payloadReq.length === boundaryInput.N &&
+            boundaryInput.payloadAllow.length === boundaryInput.N;
+
+        const spacePerLayerOk = boundaryInput.spaceReq.every((req, index) => {
+            const eff = boundaryInput.spaceEff[index];
+            return (
+                eff.length >= req.length &&
+                eff.width >= req.width &&
+                eff.height >= req.height
+            );
+        });
+
+        const payloadPerLayerOk = boundaryInput.payloadReq.every((req, index) => {
+            const allow = boundaryInput.payloadAllow[index];
+            return req <= allow / boundaryInput.gamma;
+        });
+
+        const targetEfficiency =
+            boundaryInput.areaFootprintTarget > EPS
+                ? boundaryInput.areaPanelSumTarget / boundaryInput.areaFootprintTarget
+                : 0;
+        const baselineEfficiency =
+            boundaryInput.areaFootprintBaseline > EPS
+                ? boundaryInput.areaPanelSumBaseline / boundaryInput.areaFootprintBaseline
+                : 0;
+        const efficiencyDenominatorOk =
+            boundaryInput.areaFootprintTarget > EPS &&
+            boundaryInput.areaFootprintBaseline > EPS;
+        const efficiencyImproveOk = targetEfficiency > baselineEfficiency;
 
         const checks = {
             R1_non_isolated: nonIsolatedOk,
@@ -518,10 +567,115 @@
             R15_m1_eq_8: m1Eq8Ok,
             R16_m3_eq_2: m3Eq2Ok,
             R17_m2_fixed_2: m2Ok,
+            V1_boundary_n_equals_m3: boundaryNOk,
+            V2_boundary_vectors_match_n: boundaryLengthOk,
+            V3_space_per_layer_valid: spacePerLayerOk,
+            V4_payload_per_layer_valid: payloadPerLayerOk,
+            V5_efficiency_denominator_positive: efficiencyDenominatorOk,
+            V6_efficiency_target_gt_baseline: efficiencyImproveOk,
         };
 
         const ok = panelCountOk && Object.values(checks).every(Boolean);
-        return { ok, checks };
+        return {
+            ok,
+            checks,
+            metrics: {
+                N: boundaryInput.N,
+                gamma: boundaryInput.gamma,
+                targetEfficiency,
+                baselineEfficiency,
+            },
+        };
+    }
+
+    /**
+     * 构建边界与验证输入。
+     * @param {object} caseData
+     * @returns {object}
+     */
+    function buildBoundaryInput(caseData) {
+        const N = caseData.panels.length;
+        const spaceReq = Array.from({ length: N }, () => ({
+            length: BOUNDARY_PROFILE.reqSpaceLength,
+            width: BOUNDARY_PROFILE.reqSpaceWidth,
+            height: BOUNDARY_PROFILE.reqSpaceHeight,
+        }));
+        const spaceEff = Array.from({ length: N }, () => ({
+            length: BOUNDARY_PROFILE.effSpaceLength,
+            width: BOUNDARY_PROFILE.effSpaceWidth,
+            height: BOUNDARY_PROFILE.effSpaceHeight,
+        }));
+        const payloadReq = Array.from(
+            { length: N },
+            () => BOUNDARY_PROFILE.reqPayloadPerLayer
+        );
+        const payloadAllow = caseData.panels.map((panel) => {
+            const kConn = caseData.panelDegreeById[panel.id] ?? 0;
+            const kRod = kConn;
+            return Math.min(
+                BOUNDARY_PROFILE.pPanel,
+                kConn * BOUNDARY_PROFILE.pConnSingle,
+                kRod * BOUNDARY_PROFILE.pRodSingle,
+                BOUNDARY_PROFILE.pGlobal
+            );
+        });
+
+        const areaPanelList = caseData.panels.map((panel) => polygonAreaXY(panel.corners));
+        const areaPanelSumTarget = areaPanelList.reduce((sum, area) => sum + area, 0);
+        const areaFootprintTarget = footprintAreaFromPanels(caseData.panels);
+        const areaPanelSingle = areaPanelList.length > 0 ? areaPanelList[0] : 0;
+        const areaPanelSumBaseline = areaPanelSingle;
+        const areaFootprintBaseline = areaFootprintTarget;
+
+        return {
+            N,
+            spaceReq,
+            spaceEff,
+            payloadReq,
+            payloadAllow,
+            gamma: BOUNDARY_PROFILE.gamma,
+            areaPanelSumTarget,
+            areaFootprintTarget,
+            areaPanelSumBaseline,
+            areaFootprintBaseline,
+        };
+    }
+
+    /**
+     * 计算多边形在 XY 平面的面积（Shoelace）。
+     * @param {Array<{x:number,y:number}>} points
+     * @returns {number}
+     */
+    function polygonAreaXY(points) {
+        if (points.length < 3) {
+            return 0;
+        }
+        let sum = 0;
+        for (let index = 0; index < points.length; index += 1) {
+            const current = points[index];
+            const next = points[(index + 1) % points.length];
+            sum += current.x * next.y - next.x * current.y;
+        }
+        return Math.abs(sum) * 0.5;
+    }
+
+    /**
+     * 计算俯视投影占地面积（包围盒面积）。
+     * @param {Array<{corners:Array<{x:number,y:number}>}>} panels
+     * @returns {number}
+     */
+    function footprintAreaFromPanels(panels) {
+        if (panels.length === 0) {
+            return 0;
+        }
+        const allPoints = panels.flatMap((panel) => panel.corners);
+        const xs = allPoints.map((point) => point.x);
+        const ys = allPoints.map((point) => point.y);
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+        return Math.max(0, maxX - minX) * Math.max(0, maxY - minY);
     }
 
     /**
@@ -793,13 +947,14 @@
     let activeIndex = 0;
 
     const ENUM_RESULT = enumerateCases();
-    const CASES = ENUM_RESULT.validCases;
+    const CASES = ENUM_RESULT.allCases;
 
     const caseCountEl = document.getElementById("case-count");
     const activeCaseEl = document.getElementById("active-case");
     const caseSummaryEl = document.getElementById("case-summary");
+    const caseVerifySummaryEl = document.getElementById("case-verify-summary");
+    const caseVerifyListEl = document.getElementById("case-verify-list");
     const caseListEl = document.getElementById("case-list");
-    const allCasesTextEl = document.getElementById("all-cases-text");
 
     function resizeCanvas() {
         const dpr = window.devicePixelRatio || 1;
@@ -1002,11 +1157,17 @@
             button.className = `case-btn${index === activeIndex ? " active" : ""}`;
             const levelText = item.levels.map((level) => level.label).join("+");
             const maxPanelDegree = Math.max(...Object.values(item.panelDegreeById));
+            const checkValues = Object.values(item.verify.checks);
+            const passCount = checkValues.filter(Boolean).length;
+            const totalCount = checkValues.length;
+            const statusText = item.verify.ok ? "通过" : "未通过";
+            const statusClass = item.verify.ok ? "ok" : "warn";
             button.innerHTML = `
                 <div><strong>${item.id}</strong></div>
                 <div class="mono">层位 = ${levelText}</div>
                 <div class="mono">M3数量 = ${item.panels.length}</div>
                 <div class="mono">max(每面连接杆数) = ${maxPanelDegree}</div>
+                <div class="mono ${statusClass}">验证 ${statusText} (${passCount}/${totalCount})</div>
             `;
             button.addEventListener("click", () => {
                 activeIndex = index;
@@ -1023,8 +1184,8 @@
         if (CASES.length === 0) {
             activeCaseEl.textContent = "-";
             caseSummaryEl.textContent = "无可行结构";
-            allCasesTextEl.textContent = "有效可行集：∅";
-            allCasesTextEl.className = "warn";
+            caseVerifySummaryEl.textContent = "-";
+            caseVerifyListEl.innerHTML = "";
             return;
         }
 
@@ -1034,18 +1195,29 @@
         const panelDegrees = Object.values(current.panelDegreeById);
         const maxRod = Math.max(...rodDegrees);
         const maxPanel = Math.max(...panelDegrees);
+        const checkEntries = Object.entries(current.verify.checks);
+        const passCount = checkEntries.filter((entry) => entry[1]).length;
+        const statusText = current.verify.ok ? "通过" : "未通过";
+        const statusClass = current.verify.ok ? "ok" : "warn";
+        const metrics = current.verify.metrics;
 
         activeCaseEl.textContent = current.id;
         caseSummaryEl.textContent =
             `M1=${MODEL.m1}(线段), M2=${MODEL.m2}, 层位=${levels}, M3=${current.panels.length}, ` +
-            `maxRodDeg=${maxRod}, maxPanelDeg=${maxPanel}, R16=${current.panels.length}/2`;
-
-        const caseText = CASES.map((item) => {
-            const key = item.levels.map((level) => level.key).join("");
-            return `${item.id}[${key}]`;
-        }).join("、");
-        allCasesTextEl.textContent = `总候选 ${ENUM_RESULT.totalCandidates} 种，满足 R9-R17 约束 ${CASES.length} 种：${caseText}`;
-        allCasesTextEl.className = "ok";
+            `maxRodDeg=${maxRod}, maxPanelDeg=${maxPanel}`;
+        caseVerifySummaryEl.className = `mono ${statusClass}`;
+        caseVerifySummaryEl.textContent =
+            `当前验证：${statusText}（${passCount}/${checkEntries.length}），` +
+            `通过总数：${ENUM_RESULT.validCases.length}/${ENUM_RESULT.totalCandidates}，` +
+            `N=${metrics.N}, gamma=${metrics.gamma}, ` +
+            `eff=${metrics.targetEfficiency.toFixed(3)} vs ${metrics.baselineEfficiency.toFixed(3)}`;
+        caseVerifyListEl.innerHTML = checkEntries
+            .map((entry) => {
+                const key = entry[0];
+                const passed = entry[1];
+                return `<div class="mono ${passed ? "ok" : "warn"}">${passed ? "✓" : "✗"} ${key}</div>`;
+            })
+            .join("");
     }
 
     function fitToCurrentCase() {
