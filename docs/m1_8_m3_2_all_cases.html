@@ -277,8 +277,8 @@
         <ul>
             <li><span class="mono">A1</span>：固定 <span class="mono">M1=8</span>。4 个矩形顶点位置，每个顶点放置 2 段共线杆（下段/上段），共 8 段线段。</li>
             <li><span class="mono">A2</span>：候选层板高度仅取 <span class="mono">底/中/顶</span> 三个离散层位；每块 <span class="mono">M3</span> 都是同外轮廓矩形。</li>
-            <li><span class="mono">A3</span>：连接判定只允许端点/顶点匹配；即 <span class="mono">R13-R15</span> 直接作为几何过滤条件。</li>
-            <li><span class="mono">A4</span>：额外强约束：<span class="mono">M1=8</span>、<span class="mono">M3=2</span>（对应 <span class="mono">R16/R17</span>）。</li>
+            <li><span class="mono">A3</span>：连接判定只允许端点/顶点匹配；即 <span class="mono">R9-R11</span> 直接作为几何过滤条件。</li>
+            <li><span class="mono">A4</span>：额外强约束：<span class="mono">M1=8</span>、<span class="mono">M3=2</span>（对应 <span class="mono">R15/R16</span>）。</li>
             <li><span class="mono">A5</span>：枚举变量是三层位的启用子集，逐一计算并过滤不满足规则的情况。</li>
         </ul>
     </section>
@@ -286,7 +286,7 @@
     <section class="card">
         <h2>所有可能情况（满足全部约束）</h2>
         <p id="all-cases-text" class="ok"></p>
-        <p class="muted">说明：算法会检查 <span class="mono">R13-R17</span>，仅保留“端点/顶点连接 + M1=8 + M3=2”的 case。</p>
+        <p class="muted">说明：算法会检查 <span class="mono">R9-R17</span>，仅保留“端点/顶点连接 + M1=8 + M3=2”的 case。</p>
     </section>
 </main>
 
@@ -509,15 +509,15 @@
             R6_rods_parallel: rodParallelOk && rodSegmentOk,
             R7_panels_parallel: panelParallelOk,
             R8_rod_panel_perpendicular: perpendicularOk,
-            R9_panel_degree_le_8: panelDegreeOk,
-            R10_rod_degree_le_2: rodDegreeOk,
-            R11_m1_is_8: rodCountOk,
-            R12_m2_fixed_2: m2Ok,
-            R13_m1_m1_endpoint_only: m1m1EndpointOnlyOk,
-            R14_m1_m3_on_m1_endpoint: m1m3OnRodEndpointOk,
-            R15_m1_m3_on_m3_vertex: m1m3OnPanelVertexOk,
-            R16_m1_eq_8: m1Eq8Ok,
-            R17_m3_eq_2: m3Eq2Ok,
+            R9_m1_m1_endpoint_only: m1m1EndpointOnlyOk,
+            R10_m1_m3_on_m1_endpoint: m1m3OnRodEndpointOk,
+            R11_m1_m3_on_m3_vertex: m1m3OnPanelVertexOk,
+            R12_panel_degree_le_8: panelDegreeOk,
+            R13_rod_degree_le_2: rodDegreeOk,
+            R14_m1_count_multiple_of_4_and_min_8: rodCountOk,
+            R15_m1_eq_8: m1Eq8Ok,
+            R16_m3_eq_2: m3Eq2Ok,
+            R17_m2_fixed_2: m2Ok,
         };
 
         const ok = panelCountOk && Object.values(checks).every(Boolean);
@@ -1038,13 +1038,13 @@
         activeCaseEl.textContent = current.id;
         caseSummaryEl.textContent =
             `M1=${MODEL.m1}(线段), M2=${MODEL.m2}, 层位=${levels}, M3=${current.panels.length}, ` +
-            `maxRodDeg=${maxRod}, maxPanelDeg=${maxPanel}, R17=${current.panels.length}/2`;
+            `maxRodDeg=${maxRod}, maxPanelDeg=${maxPanel}, R16=${current.panels.length}/2`;
 
         const caseText = CASES.map((item) => {
             const key = item.levels.map((level) => level.key).join("");
             return `${item.id}[${key}]`;
         }).join("、");
-        allCasesTextEl.textContent = `总候选 ${ENUM_RESULT.totalCandidates} 种，满足 R13-R17 约束 ${CASES.length} 种：${caseText}`;
+        allCasesTextEl.textContent = `总候选 ${ENUM_RESULT.totalCandidates} 种，满足 R9-R17 约束 ${CASES.length} 种：${caseText}`;
         allCasesTextEl.className = "ok";
     }
 

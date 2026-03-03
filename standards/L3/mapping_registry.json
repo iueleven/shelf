@@ -196,7 +196,7 @@
       "l1_anchor": "## 4. 组合原则（Combination Principles）",
       "l2_file": "standards/L2/置物架框架标准.md",
       "l2_anchor": "## 4. 组合原则（Combination Principles）",
-      "sync_note": "L2组合原则增加R1-R12命名，L3通过HTML补充M1=8,M2=2全集判定证据",
+      "sync_note": "L2组合原则重排为A-E分组并补充可合并表达，规则语义与编号保持不变；L3仍由HTML提供R13-R17可视化判定证据",
       "impl_symbols": [
         {
           "file": "src/shelf_framework.py",
