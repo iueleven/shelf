@@ -809,7 +809,8 @@
     }
 
     function drawGrid(basis) {
-        const floorY = -MODEL.rodHeight * 0.66;
+        // 地面网格放在与 M3 平行的平面（XY 平面）上，避免出现“竖墙”感。
+        const floorZ = -MODEL.rodHeight * 0.66;
         const size = 3.2;
         const step = 0.4;
 
@@ -818,8 +819,8 @@
         ctx.lineWidth = 1;
 
         for (let x = -size; x <= size + EPS; x += step) {
-            const p1 = project({ x, y: floorY, z: -size }, basis);
-            const p2 = project({ x, y: floorY, z: size }, basis);
+            const p1 = project({ x, y: -size, z: floorZ }, basis);
+            const p2 = project({ x, y: size, z: floorZ }, basis);
             if (!p1 || !p2) {
                 continue;
             }
@@ -829,9 +830,9 @@
             ctx.stroke();
         }
 
-        for (let z = -size; z <= size + EPS; z += step) {
-            const p1 = project({ x: -size, y: floorY, z }, basis);
-            const p2 = project({ x: size, y: floorY, z }, basis);
+        for (let y = -size; y <= size + EPS; y += step) {
+            const p1 = project({ x: -size, y, z: floorZ }, basis);
+            const p2 = project({ x: size, y, z: floorZ }, basis);
             if (!p1 || !p2) {
                 continue;
             }
