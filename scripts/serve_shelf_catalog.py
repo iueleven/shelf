@@ -56,6 +56,15 @@ def _qs_value(params: dict[str, list[str]], key: str, default: str) -> str:
     return values[0]
 
 
+def _parse_bool(raw: str, default: bool) -> bool:
+    text = raw.strip().lower()
+    if text in {"1", "true", "yes", "y", "on"}:
+        return True
+    if text in {"0", "false", "no", "n", "off"}:
+        return False
+    return default
+
+
 def _build_space_from_query(params: dict[str, list[str]]) -> SearchSpace:
     del params
     return SearchSpace(
@@ -151,6 +160,7 @@ class ShelfCatalogHandler(BaseHTTPRequestHandler):
                 boundary = _build_boundary_from_query(query)
                 family_filter = _qs_value(query, "family", "all")
                 status_filter = _qs_value(query, "status", "all")
+                exclude_rule_failed = _parse_bool(_qs_value(query, "exclude_rule_failed", "0"), False)
                 sort_key = _qs_value(query, "sort", "goal_desc")
                 offset = max(0, int(_qs_value(query, "offset", "0")))
                 limit = max(1, int(_qs_value(query, "limit", "80")))
@@ -160,6 +170,7 @@ class ShelfCatalogHandler(BaseHTTPRequestHandler):
                     boundary=boundary,
                     family_filter=family_filter,
                     status_filter=status_filter,
+                    exclude_rule_failed=exclude_rule_failed,
                     sort_key=sort_key,
                     offset=offset,
                     limit=limit,

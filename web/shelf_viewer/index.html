@@ -48,7 +48,7 @@
             <input value="对称 + 平移" readonly />
           </label>
         </div>
-        <p class="param-note">全部组合由本地缓存文件提供，不再每次重新穷举生成；R8 不连通组合已在缓存阶段剔除。</p>
+        <p class="param-note">全部组合由本地缓存文件提供，不再每次重新穷举生成；缓存包含 `3x3x3` 全量组合情况。</p>
 
         <h2>边界与目标</h2>
         <div class="grid">
@@ -88,8 +88,12 @@
             偏移量
             <input id="offsetInput" type="number" value="0" min="0" />
           </label>
+          <label class="checkbox-line">
+            <input id="excludeRuleFailedToggle" type="checkbox" checked />
+            剔除不符合组合原则
+          </label>
         </div>
-        <p class="param-note">要查看组合失败形态，请将“通过状态”切换为“规则失败”。</p>
+        <p class="param-note">要查看组合失败形态：将“通过状态”切换为“规则失败”，并关闭“剔除不符合组合原则”。</p>
         <p id="cacheInfo" class="param-note">缓存文件：-</p>
       </aside>
 
@@ -151,6 +155,11 @@
             <div class="bar-wrap"><div id="boundaryFailBar" class="bar neutral"></div></div>
             <strong id="boundaryFailRate">-</strong>
           </div>
+        </section>
+
+        <section class="panel bars">
+          <h2>组合原则排除个数</h2>
+          <div id="ruleExcludeChart" class="rule-chart-grid"></div>
         </section>
 
         <section class="panel preview-list">

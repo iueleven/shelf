@@ -7,6 +7,7 @@ const refs = {
   boundaryGInput: document.getElementById("boundaryGInput"),
   familySelect: document.getElementById("familySelect"),
   statusSelect: document.getElementById("statusSelect"),
+  excludeRuleFailedToggle: document.getElementById("excludeRuleFailedToggle"),
   limitInput: document.getElementById("limitInput"),
   offsetInput: document.getElementById("offsetInput"),
   cacheInfo: document.getElementById("cacheInfo"),
@@ -32,7 +33,8 @@ const refs = {
   pageInfo: document.getElementById("pageInfo"),
   detailBox: document.getElementById("detailBox"),
   selectedTitle: document.getElementById("selectedTitle"),
-  viewerCanvas: document.getElementById("viewerCanvas")
+  viewerCanvas: document.getElementById("viewerCanvas"),
+  ruleExcludeChart: document.getElementById("ruleExcludeChart")
 };
 
 const state = {
@@ -50,6 +52,10 @@ refs.familySelect.addEventListener("change", () => {
   loadCatalog();
 });
 refs.statusSelect.addEventListener("change", () => {
+  refs.offsetInput.value = "0";
+  loadCatalog();
+});
+refs.excludeRuleFailedToggle.addEventListener("change", () => {
   refs.offsetInput.value = "0";
   loadCatalog();
 });
@@ -85,6 +91,7 @@ async function loadCatalog() {
     boundary_g: refs.boundaryGInput.value.trim(),
     family: refs.familySelect.value,
     status: refs.statusSelect.value,
+    exclude_rule_failed: refs.excludeRuleFailedToggle.checked ? "1" : "0",
     limit: refs.limitInput.value.trim(),
     offset: refs.offsetInput.value.trim()
   });
@@ -168,6 +175,7 @@ function renderSummary(summary, meta) {
     refs.boundaryFailRate.textContent = "-";
     refs.ruleFailRate.textContent = "-";
     refs.goalFailRate.textContent = "-";
+    renderRuleExclusionChart({});
     return;
   }
 
@@ -182,7 +190,8 @@ function renderSummary(summary, meta) {
   const cacheFile = meta?.cache_file || "-";
   const engineVersion = meta?.engine_version || "-";
   const rodRule = meta?.rod_segment_rule || "-";
-  const r8FilteredRemoved = Number(meta?.r8_filtered_removed || 0);
+  const excludedByToggle = Number(meta?.rule_excluded_by_toggle || 0);
+  const ruleExclusionCounts = meta?.rule_exclusion_counts || {};
 
   refs.enumerationTotal.textContent = formatInt(total);
   refs.generatedTotal.textContent = formatInt(generated);
@@ -194,7 +203,7 @@ function renderSummary(summary, meta) {
   refs.boundaryFailed.textContent = formatInt(boundaryFailed);
   refs.cacheInfo.textContent =
     `缓存文件：${cacheFile}｜引擎版本：${engineVersion}` +
-    `｜杆段规则：${rodRule}｜R8预过滤剔除：${formatInt(r8FilteredRemoved)}`;
+    `｜杆段规则：${rodRule}｜规则开关剔除：${formatInt(excludedByToggle)}`;
 
   const passRate = total > 0 ? (goalPassed / total) * 100 : 0;
   const goalFailRate = total > 0 ? (goalFailed / total) * 100 : 0;
@@ -210,6 +219,7 @@ function renderSummary(summary, meta) {
   refs.goalFailRate.textContent = `${goalFailRate.toFixed(1)}%`;
   refs.ruleFailRate.textContent = `${ruleFailRate.toFixed(1)}%`;
   refs.boundaryFailRate.textContent = `${boundaryFailRate.toFixed(1)}%`;
+  renderRuleExclusionChart(ruleExclusionCounts);
 }
 
 function renderPager(meta) {
@@ -518,4 +528,25 @@ function escapeAttr(text) {
     .replaceAll("\"", "&quot;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
+}
+
+function renderRuleExclusionChart(counts) {
+  const order = ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9", "R10"];
+  const values = order.map((key) => Number(counts?.[key] || 0));
+  const maxValue = Math.max(1, ...values);
+  refs.ruleExcludeChart.innerHTML = "";
+
+  order.forEach((rule, index) => {
+    const value = values[index];
+    const item = document.createElement("div");
+    item.className = "rule-chart-item";
+    item.innerHTML = `
+      <div class="rule-chart-value">${formatInt(value)}</div>
+      <div class="rule-chart-bar-wrap">
+        <div class="rule-chart-bar" style="height:${((value / maxValue) * 100).toFixed(2)}%"></div>
+      </div>
+      <div class="rule-chart-label">${rule}</div>
+    `;
+    refs.ruleExcludeChart.appendChild(item);
+  });
 }

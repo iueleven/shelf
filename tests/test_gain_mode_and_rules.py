@@ -264,6 +264,30 @@ class GainModeAndRulesTest(unittest.TestCase):
         self.assertTrue(any(row["validation"]["rules_passed"] for row in payload["rows"]))
         self.assertTrue(any(not row["validation"]["rules_passed"] for row in payload["rows"]))
 
+    def test_exclude_rule_failed_toggle_filters_out_rule_fail_rows(self) -> None:
+        payload = build_catalog(
+            space=SearchSpace(
+                slots_x=1,
+                slots_y=1,
+                slots_z=1,
+                panel_length=1.0,
+                panel_width=1.0,
+                rod_length=1.0,
+                dedupe_symmetry=True,
+            ),
+            boundary=BoundaryConstraint(max_layers_n=1, baseline_gain=1.0),
+            status_filter="all",
+            exclude_rule_failed=True,
+            limit=20,
+        )
+
+        self.assertEqual(payload["meta"]["enumeration_total"], 2)
+        self.assertEqual(payload["meta"]["rule_excluded_by_toggle"], 2)
+        self.assertEqual(payload["summary"]["rule_failed"], 2)
+        self.assertEqual(len(payload["rows"]), 0)
+        self.assertIn("rule_exclusion_counts", payload["meta"])
+        self.assertIn("R10", payload["meta"]["rule_exclusion_counts"])
+
     def test_mid_layer_panel_gain_ratio_can_reach_two(self) -> None:
         pattern_stats = _pattern_stats(width=1, height=1, dedupe_symmetry=False)
         (

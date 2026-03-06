@@ -108,9 +108,30 @@ FAMILY_META: tuple[tuple[str, str], ...] = (
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CATALOG_CACHE_DIR = REPO_ROOT / "data"
 CATALOG_CACHE_PATH = CATALOG_CACHE_DIR / "catalog_3x3x3_v2.pkl.gz"
-CATALOG_CACHE_VERSION = 4
-ENGINE_VERSION = "2026-03-03-r10-corner-v1"
+CATALOG_CACHE_VERSION = 5
+ENGINE_VERSION = "2026-03-03-full-catalog-rules-v1"
 ROD_SEGMENT_RULE = "trim_to_highest_attached_panel_level"
+
+RULE_ORDER: tuple[str, ...] = (
+    "R1",
+    "R2",
+    "R3",
+    "R4",
+    "R5",
+    "R6",
+    "R7",
+    "R8",
+    "R9",
+    "R10",
+)
+RULE_FAIL_BIT_R3 = 1 << 0
+RULE_FAIL_BIT_R8 = 1 << 1
+RULE_FAIL_BIT_R9 = 1 << 2
+RULE_FAIL_BIT_R10 = 1 << 3
+
+
+def _new_rule_exclusion_counts() -> dict[str, int]:
+    return {key: 0 for key in RULE_ORDER}
 
 
 def list_family_meta() -> list[dict[str, str]]:
@@ -549,15 +570,17 @@ def _build_fixed_cache_payload() -> dict[str, object]:
     levels = 3
 
     patterns = _layer_patterns(width=width, height=height, dedupe_symmetry=True)
+    support_lookup = _support_mask_lookup(width=width, height=height)
     connected_lookup = _single_connected_lookup(width=width, height=height)
     seen_signatures: set[tuple[int, ...]] = set()
     flat_sequences = array("H")
     family_codes = array("B")
+    rule_fail_masks = array("B")
 
     key_to_code, _code_to_meta = _family_code_map()
     duplicate_removed = 0
-    r8_filtered_removed = 0
     raw_sequence_total = 0
+    rule_exclusion_counts = _new_rule_exclusion_counts()
 
     for sequence in itertools.product(patterns, repeat=levels):
         raw_sequence_total += 1
@@ -574,9 +597,34 @@ def _build_fixed_cache_payload() -> dict[str, object]:
 
         m0, m1, m2 = signature
         union_mask = m0 | m1 | m2
-        if not connected_lookup[union_mask]:
-            r8_filtered_removed += 1
-            continue
+
+        support_m0 = support_lookup[m0]
+        support_m1 = support_lookup[m1]
+        support_m2 = support_lookup[m2]
+        panel_count = m0.bit_count() + m1.bit_count() + m2.bit_count()
+
+        top_level_2_mask = support_m2
+        top_level_1_mask = support_m1 & ~support_m2
+        rod_segments = top_level_1_mask.bit_count() + 2 * top_level_2_mask.bit_count()
+
+        r3_min_counts = panel_count > 0 and rod_segments > 0
+        r8_single_connected = connected_lookup[union_mask]
+        r9_top_capped = True
+        r10_panel_four_corner_supported = (support_m0 & ~(support_m1 | support_m2)) == 0
+
+        rule_fail_mask = 0
+        if not r3_min_counts:
+            rule_fail_mask |= RULE_FAIL_BIT_R3
+            rule_exclusion_counts["R3"] += 1
+        if not r8_single_connected:
+            rule_fail_mask |= RULE_FAIL_BIT_R8
+            rule_exclusion_counts["R8"] += 1
+        if not r9_top_capped:
+            rule_fail_mask |= RULE_FAIL_BIT_R9
+            rule_exclusion_counts["R9"] += 1
+        if not r10_panel_four_corner_supported:
+            rule_fail_mask |= RULE_FAIL_BIT_R10
+            rule_exclusion_counts["R10"] += 1
 
         footprint_cells = union_mask.bit_count()
         panel_ground_count = m0.bit_count()
@@ -589,6 +637,7 @@ def _build_fixed_cache_payload() -> dict[str, object]:
 
         flat_sequences.extend((m0, m1, m2))
         family_codes.append(key_to_code[family_key])
+        rule_fail_masks.append(rule_fail_mask)
 
     return {
         "version": CATALOG_CACHE_VERSION,
@@ -605,10 +654,11 @@ def _build_fixed_cache_payload() -> dict[str, object]:
         },
         "raw_sequence_total": raw_sequence_total,
         "duplicate_removed": duplicate_removed,
-        "r8_filtered_removed": r8_filtered_removed,
+        "rule_exclusion_counts": rule_exclusion_counts,
         "sequence_count": len(flat_sequences) // 3,
         "flat_sequences": flat_sequences,
         "family_codes": family_codes,
+        "rule_fail_masks": rule_fail_masks,
     }
 
 def _evaluate_masks(
@@ -769,6 +819,7 @@ def _build_catalog_by_enumeration(
     *,
     family_filter: str = "all",
     status_filter: str = "all",
+    exclude_rule_failed: bool = False,
     sort_key: str = "enum_order",
     offset: int = 0,
     limit: int = 80,
@@ -803,6 +854,8 @@ def _build_catalog_by_enumeration(
     goal_failed_count = 0
     rule_failed_count = 0
     boundary_failed_count = 0
+    rule_excluded_by_toggle = 0
+    rule_exclusion_counts = _new_rule_exclusion_counts()
     seen_signatures: set[tuple[int, ...]] = set()
 
     start_index = max(0, offset)
@@ -845,6 +898,14 @@ def _build_catalog_by_enumeration(
 
         if not rule_result.passed:
             rule_failed_count += 1
+            if not rule_result.r3_min_counts:
+                rule_exclusion_counts["R3"] += 1
+            if not rule_result.r8_single_connected:
+                rule_exclusion_counts["R8"] += 1
+            if not rule_result.r9_top_capped:
+                rule_exclusion_counts["R9"] += 1
+            if not rule_result.r10_panel_four_corner_supported:
+                rule_exclusion_counts["R10"] += 1
         else:
             generated_total += 1
             if goal_passed:
@@ -854,6 +915,10 @@ def _build_catalog_by_enumeration(
 
             if not boundary_passed:
                 boundary_failed_count += 1
+
+        if exclude_rule_failed and (not rule_result.passed):
+            rule_excluded_by_toggle += 1
+            continue
 
         family_match = family_filter in ("", "all") or family_filter == family_key
         status_match = _status_match(
@@ -929,6 +994,9 @@ def _build_catalog_by_enumeration(
             "layer_pattern_count": len(patterns),
             "enumeration_total": enumeration_total,
             "duplicate_removed": duplicate_removed,
+            "exclude_rule_failed": exclude_rule_failed,
+            "rule_excluded_by_toggle": rule_excluded_by_toggle,
+            "rule_exclusion_counts": rule_exclusion_counts,
             "engine_version": ENGINE_VERSION,
             "rod_segment_rule": ROD_SEGMENT_RULE,
         },
@@ -949,6 +1017,7 @@ def _build_catalog_by_cache(
     *,
     family_filter: str,
     status_filter: str,
+    exclude_rule_failed: bool,
     offset: int,
     limit: int,
 ) -> dict[str, object]:
@@ -957,13 +1026,17 @@ def _build_catalog_by_cache(
 
     flat_sequences: array = cache["flat_sequences"]
     family_codes: array = cache["family_codes"]
+    rule_fail_masks: array = cache["rule_fail_masks"]
     sequence_count = int(cache["sequence_count"])
     duplicate_removed = int(cache["duplicate_removed"])
-    r8_filtered_removed = int(cache.get("r8_filtered_removed", 0))
+    cache_rule_counts = cache.get("rule_exclusion_counts", {})
+    rule_exclusion_counts = {
+        key: int(cache_rule_counts.get(key, 0))
+        for key in RULE_ORDER
+    }
 
-    key_to_code, code_to_meta = _family_code_map()
+    _key_to_code, code_to_meta = _family_code_map()
     support_lookup = _support_mask_lookup(width=space.slots_x, height=space.slots_y)
-    connected_lookup = _single_connected_lookup(width=space.slots_x, height=space.slots_y)
     max_support_bits = (space.slots_x + 1) * (space.slots_y + 1)
     edge_cells_per_layer = sum(
         1
@@ -995,6 +1068,7 @@ def _build_catalog_by_cache(
     goal_failed_count = 0
     rule_failed_count = 0
     boundary_failed_count = 0
+    rule_excluded_by_toggle = 0
 
     for idx in range(sequence_count):
         case_index = idx + 1
@@ -1010,6 +1084,13 @@ def _build_catalog_by_cache(
         panel_ground_count = layer_counts[0]
         panel_above_count = layer_counts[1] + layer_counts[2]
         panel_count = panel_ground_count + panel_above_count
+
+        fail_mask = int(rule_fail_masks[idx])
+        r3_min_counts = (fail_mask & RULE_FAIL_BIT_R3) == 0
+        r8_single_connected = (fail_mask & RULE_FAIL_BIT_R8) == 0
+        r9_top_capped = (fail_mask & RULE_FAIL_BIT_R9) == 0
+        r10_panel_four_corner_supported = (fail_mask & RULE_FAIL_BIT_R10) == 0
+        rules_passed = fail_mask == 0
 
         union_mask = m0 | m1 | m2
         footprint_cells = cell_count_lookup[union_mask]
@@ -1029,21 +1110,14 @@ def _build_catalog_by_cache(
         rod_segments = top_level_1_count + 2 * top_level_2_count
         connector_points = top_level_0_count + 2 * top_level_1_count + 3 * top_level_2_count
 
-        r3_min_counts = panel_count > 0 and rod_segments > 0
-        r8_single_connected = connected_lookup[union_mask]
-        r9_top_capped = True
-        r10_panel_four_corner_supported = (support_m0 & ~(support_m1 | support_m2)) == 0
-        rules_passed = (
-            r3_min_counts
-            and r8_single_connected
-            and r9_top_capped
-            and r10_panel_four_corner_supported
-        )
-
         if not rules_passed:
             rule_failed_count += 1
         else:
             generated_total += 1
+
+        if exclude_rule_failed and (not rules_passed):
+            rule_excluded_by_toggle += 1
+            continue
 
         footprint_a = footprint_cells * piece_area
         panel_area_total = panel_count * piece_area
@@ -1221,7 +1295,9 @@ def _build_catalog_by_cache(
             "layer_pattern_count": len(_layer_patterns(width=3, height=3, dedupe_symmetry=True)),
             "enumeration_total": sequence_count,
             "duplicate_removed": duplicate_removed,
-            "r8_filtered_removed": r8_filtered_removed,
+            "exclude_rule_failed": exclude_rule_failed,
+            "rule_excluded_by_toggle": rule_excluded_by_toggle,
+            "rule_exclusion_counts": rule_exclusion_counts,
             "cache_file": str(CATALOG_CACHE_PATH),
             "compute_seconds": compute_seconds,
             "engine_version": str(cache.get("engine_version", ENGINE_VERSION)),
@@ -1244,6 +1320,7 @@ def build_catalog(
     *,
     family_filter: str = "all",
     status_filter: str = "all",
+    exclude_rule_failed: bool = False,
     sort_key: str = "enum_order",
     offset: int = 0,
     limit: int = 80,
@@ -1254,6 +1331,7 @@ def build_catalog(
             boundary=boundary,
             family_filter=family_filter,
             status_filter=status_filter,
+            exclude_rule_failed=exclude_rule_failed,
             offset=offset,
             limit=limit,
         )
@@ -1262,6 +1340,7 @@ def build_catalog(
         boundary=boundary,
         family_filter=family_filter,
         status_filter=status_filter,
+        exclude_rule_failed=exclude_rule_failed,
         sort_key=sort_key,
         offset=offset,
         limit=limit,

@@ -28,8 +28,11 @@ def main() -> None:
     print(f"{_timestamp()} | INFO | cache_builder | file={cache_path}")
     print(
         f"{_timestamp()} | INFO | cache_builder | sequence_count={payload['sequence_count']} "
-        f"duplicate_removed={payload['duplicate_removed']} "
-        f"r8_filtered_removed={payload.get('r8_filtered_removed', 0)}"
+        f"duplicate_removed={payload['duplicate_removed']}"
+    )
+    print(
+        f"{_timestamp()} | INFO | cache_builder | "
+        f"rule_exclusion_counts={payload.get('rule_exclusion_counts', {})}"
     )
     print(f"{_timestamp()} | INFO | cache_builder | size_mb={size_mb:.2f} elapsed_s={elapsed:.3f}")
 
